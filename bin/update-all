@@ -1,0 +1,682 @@
+#!/usr/bin/env bash
+# Cyberpunk-styled, local-first updater for Linux developer workstations.
+# Public-safe: no secrets are stored here; an optional `secret` helper may supply
+# sudo only when it already exists on the host.
+set -uo pipefail
+
+UPDATE_ALL_COREPACK_TIMEOUT="${UPDATE_ALL_COREPACK_TIMEOUT:-90s}"
+UPDATE_ALL_ANIM="${UPDATE_ALL_ANIM:-1}"
+UPDATE_ALL_COLOR="${UPDATE_ALL_COLOR:-1}"
+UPDATE_ALL_DRY_RUN=0
+
+rc=0
+_ua_started_s=""
+_ua_started_h=""
+_ua_ended_s=""
+_ua_elapsed=""
+_ua_sudo_keepalive_pid=""
+_ua_sudo_keepalive_stopped=0
+_ua_prev_int_trap=""
+_ua_prev_term_trap=""
+
+declare -a _ua_labels=()
+declare -a _ua_stats=()
+declare -a _ua_before=()
+declare -a _ua_after=()
+declare -a _ua_notes=()
+
+usage() {
+  cat <<'EOF'
+update-all - cyberpunk safe updater
+
+Usage:
+  update-all [--dry-run] [--no-anim] [--no-color] [--help]
+
+Options:
+  --dry-run   Print each update command instead of running it.
+  --no-anim   Disable terminal animations.
+  --no-color  Disable ANSI colors.
+  --help      Show this help.
+
+Environment:
+  UPDATE_ALL_COREPACK_TIMEOUT=90s  Timeout for corepack commands.
+  UPDATE_ALL_ANIM=0               Disable animations.
+  UPDATE_ALL_COLOR=0              Disable colors.
+  UPDATE_ALL_SUDO_SECRET_KEY=name Optional `secret` helper key for sudo.
+EOF
+}
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run)
+        UPDATE_ALL_DRY_RUN=1
+        ;;
+      --no-anim)
+        UPDATE_ALL_ANIM=0
+        ;;
+      --no-color)
+        UPDATE_ALL_COLOR=0
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *)
+        printf 'update-all: unknown option: %s\n\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+    shift
+  done
+}
+
+color_init() {
+  local ncolors=0
+  if [ "$UPDATE_ALL_COLOR" = 1 ] && [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+    ncolors="$(tput colors 2>/dev/null || echo 0)"
+  fi
+
+  if [ "${ncolors:-0}" -ge 256 ]; then
+    C_RESET="$(tput sgr0)"
+    C_BOLD="$(tput bold)"
+    C_DIM="$(tput dim)"
+    C_OK="$(tput setaf 35)"
+    C_WARN="$(tput setaf 214)"
+    C_BAD="$(tput setaf 203)"
+    C_CMD="$(tput setaf 117)"
+    C_TIP="$(tput setaf 213)"
+    C_HEADER="$(tput bold)$(tput setaf 39)"
+    C_LABEL="$(tput setaf 222)"
+    C_FRAME="$(tput setaf 240)"
+    C_BRAND="$(tput bold)$(tput setaf 51)"
+    C_ORANGE="$(tput bold)$(tput setaf 208)"
+    C_NEON="$(tput bold)$(tput setaf 48)"
+    C_PANEL="$(tput setab 17)$(tput setaf 51)$(tput bold)"
+  elif [ "${ncolors:-0}" -ge 8 ]; then
+    C_RESET="$(tput sgr0)"
+    C_BOLD="$(tput bold)"
+    C_DIM="$(tput dim)"
+    C_OK="$(tput setaf 2)"
+    C_WARN="$(tput setaf 3)"
+    C_BAD="$(tput setaf 1)"
+    C_CMD="$(tput setaf 6)"
+    C_TIP="$(tput setaf 5)"
+    C_HEADER="$(tput bold)$(tput setaf 6)"
+    C_LABEL="$(tput setaf 3)"
+    C_FRAME="$(tput dim)"
+    C_BRAND="$(tput bold)$(tput setaf 6)"
+    C_ORANGE="$(tput bold)$(tput setaf 3)"
+    C_NEON="$(tput bold)$(tput setaf 2)"
+    C_PANEL="$(tput rev)$(tput bold)"
+  else
+    C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""
+    C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
+    C_BRAND=""; C_ORANGE=""; C_NEON=""
+    C_PANEL=""
+  fi
+}
+
+anim_enabled() {
+  [ "$UPDATE_ALL_ANIM" = 1 ] || return 1
+  [ "$UPDATE_ALL_DRY_RUN" = 0 ] || return 1
+  [ -t 1 ] || return 1
+  [ "${CI:-}" != "true" ] || return 1
+  [ "${TERM:-}" != "dumb" ] || return 1
+}
+
+sleep_tick() {
+  sleep "${1:-0.03}" 2>/dev/null || true
+}
+
+scan_line() {
+  local label="$1" width="${2:-34}" i bar
+  if ! anim_enabled; then
+    printf '%b>>%b %s\n' "$C_HEADER" "$C_RESET" "$label"
+    return 0
+  fi
+
+  for ((i = 0; i <= width; i++)); do
+    bar="$(printf '%*s' "$i" '' | tr ' ' '#')"
+    bar="${bar}$(printf '%*s' "$((width - i))" '' | tr ' ' '.')"
+    printf '\r%b[%-*s]%b %b%s%b' "$C_NEON" "$width" "$bar" "$C_RESET" "$C_HEADER" "$label" "$C_RESET"
+    sleep_tick 0.015
+  done
+  printf '\n'
+}
+
+title_spin() {
+  local label="$1" frames='|/-\' i frame
+  if ! anim_enabled; then
+    printf '\n%b== %s ==%b\n' "$C_HEADER" "$label" "$C_RESET"
+    return 0
+  fi
+
+  for ((i = 0; i < 14; i++)); do
+    frame="${frames:i % 4:1}"
+    printf '\r%b[%s]%b %b%s%b %bONLINE%b' "$C_ORANGE" "$frame" "$C_RESET" "$C_HEADER" "$label" "$C_RESET" "$C_NEON" "$C_RESET"
+    sleep_tick 0.04
+  done
+  printf '\r%b[+]%b %b%s%b %bONLINE%b    \n' "$C_ORANGE" "$C_RESET" "$C_HEADER" "$label" "$C_RESET" "$C_NEON" "$C_RESET"
+}
+
+intro() {
+  local mode="LIVE"
+  [ "$UPDATE_ALL_DRY_RUN" = 0 ] || mode="DRY RUN"
+
+  printf '\n'
+  printf '%b  __  ______  ____  ___  __________   ___    __    __%b\n' "$C_BRAND" "$C_RESET"
+  printf '%b / / / / __ \\/ __ \\/   |/_  __/ __/  /   |  / /   / /%b\n' "$C_BRAND" "$C_RESET"
+  printf '%b/ /_/ / /_/ / / / / /| | / / / _/   / /| | / /   / / %b\n' "$C_BRAND" "$C_RESET"
+  printf '%b\\____/ .___/_/ /_/_/ |_|/_/ /___/  /_/ |_|/_/___/___/%b\n' "$C_BRAND" "$C_RESET"
+  printf '%b    /_/          CYBERPUNK SAFE APP  //  %s%b\n' "$C_TIP" "$mode" "$C_RESET"
+  printf '%b+--------------------------------------------------------------------+%b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b|%b %b%-66s%b %b|%b\n' "$C_ORANGE" "$C_RESET" "$C_PANEL" "BINARY CALLSIGN" "$C_RESET" "$C_ORANGE" "$C_RESET"
+  printf '%b|%b %b%-66s%b %b|%b\n' "$C_ORANGE" "$C_RESET" "$C_PANEL" "01110101 01110000 01100100 01100001 01110100 01100101 00101101" "$C_RESET" "$C_ORANGE" "$C_RESET"
+  printf '%b|%b %b%-66s%b %b|%b\n' "$C_ORANGE" "$C_RESET" "$C_PANEL" "01100001 01101100 01101100" "$C_RESET" "$C_ORANGE" "$C_RESET"
+  printf '%b+--------------------------------------------------------------------+%b\n' "$C_ORANGE" "$C_RESET"
+  printf '\n'
+  scan_line "booting update nexus"
+  scan_line "checking package arteries"
+  scan_line "arming receipt ledger"
+}
+
+banner() {
+  local label="$1"
+  title_spin "$label"
+  printf '%b+------------------------------------------------------------+%b\n' "$C_FRAME" "$C_RESET"
+  printf '%b|%b %-58s %b|%b\n' "$C_FRAME" "$C_RESET" "$label" "$C_FRAME" "$C_RESET"
+  printf '%b+------------------------------------------------------------+%b\n' "$C_FRAME" "$C_RESET"
+}
+
+section() {
+  local label="$1"
+  printf '\n'
+  scan_line "$label" 26
+}
+
+run_bounded() {
+  local limit="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --foreground "$limit" "$@"
+  else
+    "$@"
+  fi
+}
+
+show_cmd() {
+  printf '%b$%b' "$C_CMD" "$C_RESET"
+  printf ' %q' "$@"
+  printf '\n'
+}
+
+run_cmd() {
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd "$@"
+    return 0
+  fi
+  "$@"
+}
+
+run_shell() {
+  local script="$1"
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    printf '%b$%b bash -lc %q\n' "$C_CMD" "$C_RESET" "$script"
+    return 0
+  fi
+  bash -lc "$script"
+}
+
+sudo_cmd() {
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd sudo "$@"
+    return 0
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    "$@"
+    return $?
+  fi
+  if sudo -n true 2>/dev/null; then
+    sudo "$@"
+    return $?
+  fi
+  if [ -n "${UPDATE_ALL_SUDO_SECRET_KEY:-}" ] && command -v secret >/dev/null 2>&1 && secret has "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null; then
+    secret get "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null | sudo -S -p '' "$@"
+    return $?
+  fi
+  sudo "$@"
+}
+
+pkg_json_version() {
+  local file="$1"
+  [ -r "$file" ] || return 1
+  sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$file" | sed -n '1p'
+}
+
+version_of() {
+  case "$1" in
+    apt-upgradable)
+      apt list --upgradable 2>/dev/null | awk 'NR>1{n++} END{printf "%s upgradable", n+0}'
+      ;;
+    node)
+      command -v node >/dev/null 2>&1 && printf '%s %s' "$(command -v node)" "$(node --version 2>/dev/null)"
+      ;;
+    npm-active)
+      command -v npm >/dev/null 2>&1 && printf '%s %s' "$(command -v npm)" "$(npm --version 2>/dev/null)"
+      ;;
+    npm-bundled)
+      local bundled="$HOME/.local/lib/node-current/lib/node_modules/npm/package.json" bundled_v
+      bundled_v="$(pkg_json_version "$bundled" 2>/dev/null || true)"
+      [ -n "$bundled_v" ] && printf '%s %s' "$bundled" "$bundled_v"
+      ;;
+    corepack)
+      command -v corepack >/dev/null 2>&1 && printf '%s %s' "$(command -v corepack)" "$(corepack --version 2>/dev/null)"
+      ;;
+    pnpm)
+      command -v pnpm >/dev/null 2>&1 && printf '%s %s' "$(command -v pnpm)" "$(pnpm --version 2>/dev/null)"
+      ;;
+    yarn)
+      command -v yarn >/dev/null 2>&1 && printf '%s %s' "$(command -v yarn)" "$(yarn --version 2>/dev/null)"
+      ;;
+    bun)
+      command -v bun >/dev/null 2>&1 && printf '%s %s' "$(command -v bun)" "$(bun --version 2>/dev/null)"
+      ;;
+    claude)
+      command -v claude >/dev/null 2>&1 && printf '%s %s' "$(command -v claude)" "$(claude --version 2>/dev/null | sed -n '1p')"
+      ;;
+    codex)
+      command -v codex >/dev/null 2>&1 && printf '%s %s' "$(command -v codex)" "$(codex --version 2>/dev/null | sed -n '1p')"
+      ;;
+    brew)
+      command -v brew >/dev/null 2>&1 && printf '%s %s' "$(command -v brew)" "$(brew --version 2>/dev/null | sed -n '1p')"
+      ;;
+    uv)
+      command -v uv >/dev/null 2>&1 && printf '%s %s' "$(command -v uv)" "$(uv --version 2>/dev/null | sed -n '1p')"
+      ;;
+    pipx)
+      command -v pipx >/dev/null 2>&1 && printf '%s %s' "$(command -v pipx)" "$(pipx --version 2>/dev/null)"
+      ;;
+    rustup)
+      command -v rustup >/dev/null 2>&1 && printf '%s %s' "$(command -v rustup)" "$(rustup --version 2>/dev/null | sed -n '1p')"
+      ;;
+    cargo)
+      command -v cargo >/dev/null 2>&1 && printf '%s %s' "$(command -v cargo)" "$(cargo --version 2>/dev/null | sed -n '1p')"
+      ;;
+    gh)
+      command -v gh >/dev/null 2>&1 && printf '%s %s' "$(command -v gh)" "$(gh --version 2>/dev/null | sed -n '1p')"
+      ;;
+    snap)
+      command -v snap >/dev/null 2>&1 && printf '%s %s' "$(command -v snap)" "$(snap version 2>/dev/null | awk '/^snap /{print $2; exit}')"
+      ;;
+    flatpak)
+      command -v flatpak >/dev/null 2>&1 && printf '%s %s' "$(command -v flatpak)" "$(flatpak --version 2>/dev/null)"
+      ;;
+  esac
+}
+
+track() {
+  local label="$1" code="$2" before="${3:-}" after="${4:-}" note="${5:-}" status
+  _ua_labels+=("$label")
+  _ua_before+=("$before")
+  _ua_after+=("$after")
+  _ua_notes+=("$note")
+
+  if [ "$code" -ne 0 ]; then
+    status="FAIL"
+    rc=1
+  elif [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
+    status="UPDATED"
+  elif [ -n "$before" ] && [ -n "$after" ]; then
+    status="UNCHANGED"
+  else
+    status="OK"
+  fi
+  _ua_stats+=("$status")
+}
+
+skip_step() {
+  _ua_labels+=("$1")
+  _ua_stats+=("SKIP")
+  _ua_before+=("")
+  _ua_after+=("")
+  _ua_notes+=("${2:-not installed}")
+}
+
+report() {
+  local bar i
+  _ua_ended_s="$(date +%s)"
+  _ua_elapsed=$(( _ua_ended_s - _ua_started_s ))
+  banner "REPORT"
+  bar="${C_FRAME}$(printf '%*s' 92 '' | tr ' ' '-')${C_RESET}"
+  printf '%b\n' "$bar"
+  printf '%b  update-all started%b  %s\n' "$C_HEADER" "$C_RESET" "$_ua_started_h"
+  printf '%b  update-all elapsed%b  %ss\n' "$C_HEADER" "$C_RESET" "$_ua_elapsed"
+  printf '%b\n' "$bar"
+  printf '%b  %-28s  %-10s  %-28s  %-28s%b\n' "$C_FRAME" "STEP" "RESULT" "BEFORE" "AFTER" "$C_RESET"
+  printf '%b\n' "$bar"
+
+  for ((i = 0; i < ${#_ua_labels[@]}; i++)); do
+    local lbl="${_ua_labels[$i]}"
+    local stat="${_ua_stats[$i]}"
+    local before="${_ua_before[$i]}"
+    local after="${_ua_after[$i]}"
+    local note="${_ua_notes[$i]}"
+    local icon color
+
+    case "$stat" in
+      UPDATED)   icon="UP"; color="$C_OK" ;;
+      OK)        icon="OK"; color="$C_OK" ;;
+      UNCHANGED) icon="="; color="$C_WARN" ;;
+      FAIL)      icon="!!"; color="$C_BAD" ;;
+      SKIP)      icon="--"; color="$C_TIP" ;;
+      *)         icon="?"; color="$C_RESET" ;;
+    esac
+
+    [ -n "$before" ] || before="-"
+    [ -n "$after" ] || after="-"
+    printf '  %-28s  %b%-2s %-7s%b  %-28.28s  %-28.28s\n' "$lbl" "$color" "$icon" "$stat" "$C_RESET" "$before" "$after"
+    if [ -n "$note" ]; then
+      printf '  %-28s  %-10s  %b%s%b\n' "" "" "$C_TIP" "$note" "$C_RESET"
+    fi
+  done
+
+  printf '%b\n' "$bar"
+  printf '  %bactive npm%b   %s\n' "$C_HEADER" "$C_RESET" "$(version_of npm-active 2>/dev/null || printf 'not found')"
+  printf '  %bbundled npm%b  %s\n' "$C_HEADER" "$C_RESET" "$(version_of npm-bundled 2>/dev/null || printf 'not found')"
+  printf '  %bnpm fund%b     npm funding notices are optional donation links, not errors or bills.\n' "$C_HEADER" "$C_RESET"
+  printf '%b\n\n' "$bar"
+
+  if [ "$rc" -eq 0 ]; then
+    printf '%bOK  update-all finished without failed steps%b\n\n' "$C_OK" "$C_RESET"
+  else
+    printf '%b!!  one or more steps failed - see FAIL rows above%b\n\n' "$C_BAD" "$C_RESET"
+  fi
+}
+
+sudo_restore_traps() {
+  if [ -n "$_ua_prev_int_trap" ]; then eval "$_ua_prev_int_trap"; else trap - INT; fi
+  if [ -n "$_ua_prev_term_trap" ]; then eval "$_ua_prev_term_trap"; else trap - TERM; fi
+}
+
+sudo_keepalive_stop() {
+  [ "${_ua_sudo_keepalive_stopped:-0}" -eq 0 ] || return 0
+  _ua_sudo_keepalive_stopped=1
+  if [ -n "${_ua_sudo_keepalive_pid:-}" ]; then
+    kill "$_ua_sudo_keepalive_pid" 2>/dev/null || true
+    wait "$_ua_sudo_keepalive_pid" 2>/dev/null || true
+    _ua_sudo_keepalive_pid=""
+  fi
+  sudo_restore_traps
+}
+
+sudo_keepalive_abort() {
+  sudo_keepalive_stop
+  exit 130
+}
+
+prime_sudo() {
+  [ "$UPDATE_ALL_DRY_RUN" = 0 ] || return 0
+  command -v sudo >/dev/null 2>&1 || return 0
+
+  sudo_cmd -v || return $?
+
+  local monitor_was_on=0
+  case "$-" in *m*) monitor_was_on=1; set +m ;; esac
+  {
+    (
+      while true; do
+        sleep 60
+        sudo_cmd -v >/dev/null 2>&1 || exit
+      done
+    ) &
+    _ua_sudo_keepalive_pid=$!
+  } 2>/dev/null
+  [ "$monitor_was_on" -eq 1 ] && set -m
+  trap sudo_keepalive_abort INT TERM
+}
+
+run_updates() {
+  local before after dpkg_audit dpkg_audit_code
+
+  banner "SYSTEM"
+  section "dpkg audit"
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd sudo dpkg --audit
+    track "dpkg audit" 0 "" "" "dry-run: dpkg state not changed"
+  else
+    dpkg_audit="$(sudo_cmd dpkg --audit 2>&1)"
+    dpkg_audit_code=$?
+    if [ "$dpkg_audit_code" -ne 0 ]; then
+      printf '%s\n' "$dpkg_audit"
+      track "dpkg audit" "$dpkg_audit_code" "" "" "could not inspect dpkg state"
+    elif [ -n "$dpkg_audit" ]; then
+      printf '%s\n' "$dpkg_audit"
+      track "dpkg audit" 0 "" "" "pending package configuration detected"
+      section "dpkg configure"
+      sudo_cmd env DEBIAN_FRONTEND=noninteractive dpkg --configure -a
+      track "dpkg configure" $?
+    else
+      track "dpkg audit" 0 "" "" "dpkg state clean"
+    fi
+  fi
+
+  section "apt update"
+  sudo_cmd apt-get update -y
+  track "apt update" $?
+
+  before="$(version_of apt-upgradable 2>/dev/null || true)"
+  section "apt upgrade"
+  sudo_cmd apt-get -o Dpkg::Options::=--force-confold upgrade -y
+  after="$(version_of apt-upgradable 2>/dev/null || true)"
+  track "apt upgrade" $? "$before" "$after"
+
+  if command -v snap >/dev/null 2>&1; then
+    before="$(version_of snap 2>/dev/null || true)"
+    section "snap refresh"
+    sudo_cmd snap refresh
+    after="$(version_of snap 2>/dev/null || true)"
+    track "snap refresh" $? "$before" "$after"
+  else
+    skip_step "snap refresh" "snap command not installed"
+  fi
+
+  if command -v flatpak >/dev/null 2>&1; then
+    before="$(version_of flatpak 2>/dev/null || true)"
+    section "flatpak update"
+    run_cmd flatpak update -y --noninteractive
+    after="$(version_of flatpak 2>/dev/null || true)"
+    track "flatpak update" $? "$before" "$after"
+  else
+    skip_step "flatpak update" "flatpak command not installed"
+  fi
+
+  banner "NODE"
+  if command -v update-node >/dev/null 2>&1; then
+    before="$(version_of node 2>/dev/null || true)"
+    section "node runtime"
+    run_cmd update-node
+    after="$(version_of node 2>/dev/null || true)"
+    track "node runtime" $? "$before" "$after" "update-node keeps Node inside the current major line"
+  else
+    skip_step "node runtime" "update-node command not installed"
+  fi
+
+  if command -v corepack >/dev/null 2>&1; then
+    before="$(version_of corepack 2>/dev/null || true)"
+    section "corepack enable"
+    if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+      show_cmd env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable
+    else
+      run_bounded "$UPDATE_ALL_COREPACK_TIMEOUT" env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable
+    fi
+    hash -r 2>/dev/null || true
+    after="$(version_of corepack 2>/dev/null || true)"
+    track "corepack enable" $? "$before" "$after" "bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)"
+
+    if command -v pnpm >/dev/null 2>&1; then
+      before="$(version_of pnpm 2>/dev/null || true)"
+      section "pnpm self-update"
+      if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+        show_cmd env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare pnpm@latest --activate
+      else
+        run_bounded "$UPDATE_ALL_COREPACK_TIMEOUT" env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare pnpm@latest --activate
+      fi
+      after="$(version_of pnpm 2>/dev/null || true)"
+      track "pnpm (corepack)" $? "$before" "$after" "bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)"
+    else
+      skip_step "pnpm (corepack)" "pnpm is not activated/installed"
+    fi
+
+    if command -v yarn >/dev/null 2>&1; then
+      before="$(version_of yarn 2>/dev/null || true)"
+      section "yarn self-update"
+      if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+        show_cmd env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare yarn@stable --activate
+      else
+        run_bounded "$UPDATE_ALL_COREPACK_TIMEOUT" env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare yarn@stable --activate
+      fi
+      after="$(version_of yarn 2>/dev/null || true)"
+      track "yarn (corepack)" $? "$before" "$after" "bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)"
+    else
+      skip_step "yarn (corepack)" "yarn is not activated/installed"
+    fi
+  else
+    skip_step "corepack enable" "corepack command not installed"
+    skip_step "pnpm (corepack)" "corepack command not installed"
+    skip_step "yarn (corepack)" "corepack command not installed"
+  fi
+
+  banner "NPM"
+  if command -v npm >/dev/null 2>&1; then
+    before="$(version_of npm-active 2>/dev/null || true)"
+    section "npm self-update"
+    run_cmd npm install -g npm@latest --no-fund
+    after="$(version_of npm-active 2>/dev/null || true)"
+    track "npm self-update" $? "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in REPORT"
+
+    section "npm globals"
+    run_cmd npm update -g --no-fund
+    track "npm globals" $?
+
+    before="$(version_of claude 2>/dev/null || true)"
+    section "claude code"
+    run_cmd npm install -g @anthropic-ai/claude-code@latest --no-fund
+    after="$(version_of claude 2>/dev/null || true)"
+    track "claude code" $? "$before" "$after"
+
+    before="$(version_of codex 2>/dev/null || true)"
+    section "codex"
+    run_cmd npm install -g @openai/codex@latest --no-fund
+    after="$(version_of codex 2>/dev/null || true)"
+    track "codex" $? "$before" "$after"
+
+    skip_step "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows"
+  else
+    skip_step "npm self-update" "npm command not installed"
+    skip_step "npm globals" "npm command not installed"
+    skip_step "claude code" "npm command not installed"
+    skip_step "codex" "npm command not installed"
+    skip_step "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows"
+  fi
+
+  banner "TOOLS"
+  if command -v brew >/dev/null 2>&1; then
+    before="$(version_of brew 2>/dev/null || true)"
+    section "brew update + upgrade"
+    run_shell 'brew update && brew upgrade'
+    after="$(version_of brew 2>/dev/null || true)"
+    track "brew upgrade" $? "$before" "$after" "Homebrew updates itself and brew-managed formulae"
+  else
+    skip_step "brew upgrade" "brew command not installed"
+  fi
+
+  if command -v uv >/dev/null 2>&1; then
+    before="$(version_of uv 2>/dev/null || true)"
+    if command -v brew >/dev/null 2>&1 && case "$(command -v uv)" in /home/linuxbrew/*) true ;; *) false ;; esac; then
+      section "uv upgrade via brew"
+      run_shell 'brew update && brew upgrade uv'
+      after="$(version_of uv 2>/dev/null || true)"
+      track "uv upgrade (brew)" $? "$before" "$after" "uv is managed by Homebrew on this machine"
+    else
+      section "uv self update"
+      run_cmd uv self update
+      after="$(version_of uv 2>/dev/null || true)"
+      track "uv self update" $? "$before" "$after"
+    fi
+
+    section "uv tool upgrade"
+    run_cmd uv tool upgrade --all
+    track "uv tool upgrade" $?
+  else
+    skip_step "uv self update" "uv command not installed"
+    skip_step "uv tool upgrade" "uv command not installed"
+  fi
+
+  if command -v pipx >/dev/null 2>&1; then
+    before="$(version_of pipx 2>/dev/null || true)"
+    section "pipx upgrade-all"
+    run_cmd pipx upgrade-all
+    after="$(version_of pipx 2>/dev/null || true)"
+    track "pipx upgrade-all" $? "$before" "$after"
+  else
+    skip_step "pipx upgrade-all" "pipx command not installed"
+  fi
+
+  if command -v rustup >/dev/null 2>&1; then
+    before="$(version_of rustup 2>/dev/null || true)"
+    section "rustup update"
+    run_cmd rustup update
+    after="$(version_of rustup 2>/dev/null || true)"
+    track "rustup update" $? "$before" "$after"
+
+    before="$(version_of cargo 2>/dev/null || true)"
+    after="$(version_of cargo 2>/dev/null || true)"
+    track "cargo version" 0 "$before" "$after" "cargo is updated through rustup toolchains"
+  else
+    skip_step "rustup update" "rustup command not installed"
+    skip_step "cargo version" "rustup command not installed"
+  fi
+
+  if command -v gh >/dev/null 2>&1; then
+    before="$(version_of gh 2>/dev/null || true)"
+    section "gh extension upgrade"
+    run_cmd gh extension upgrade --all
+    after="$(version_of gh 2>/dev/null || true)"
+    track "gh extensions" $? "$before" "$after"
+  else
+    skip_step "gh extensions" "gh command not installed"
+  fi
+
+  banner "CLEANUP"
+  section "apt autoremove + clean"
+  sudo_cmd apt-get autoremove -y
+  local clean_a=$?
+  sudo_cmd apt-get clean
+  local clean_b=$?
+  if [ "$clean_a" -eq 0 ] && [ "$clean_b" -eq 0 ]; then
+    track "apt autoremove" 0
+  else
+    track "apt autoremove" 1 "" "" "autoremove exit=$clean_a, clean exit=$clean_b"
+  fi
+}
+
+main() {
+  parse_args "$@"
+  color_init
+  _ua_started_s="$(date +%s)"
+  _ua_started_h="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+  _ua_prev_int_trap="$(trap -p INT || true)"
+  _ua_prev_term_trap="$(trap -p TERM || true)"
+
+  intro
+  prime_sudo || return $?
+  run_updates
+  sudo_keepalive_stop
+  report
+  return "$rc"
+}
+
+main "$@"
