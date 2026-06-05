@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cyberpunk-styled, local-first updater for Linux developer workstations.
+# Local-first updater for Linux developer workstations.
 # Public-safe: no secrets are stored here; an optional `secret` helper may supply
 # sudo only when it already exists on the host.
 set -uo pipefail
@@ -27,7 +27,7 @@ declare -a _ua_notes=()
 
 usage() {
   cat <<'EOF'
-update-all - cyberpunk safe updater
+update-all - local workstation updater
 
 Usage:
   update-all [--dry-run] [--no-anim] [--no-color] [--help]
@@ -85,16 +85,16 @@ color_init() {
     C_OK="$(tput setaf 35)"
     C_WARN="$(tput setaf 214)"
     C_BAD="$(tput setaf 203)"
-    C_INFO="$(tput setaf 81)"
-    C_CMD="$(tput setaf 117)"
-    C_TIP="$(tput setaf 213)"
-    C_HEADER="$(tput bold)$(tput setaf 39)"
+    C_INFO="$(tput setaf 250)"
+    C_CMD="$(tput setaf 222)"
+    C_TIP="$(tput setaf 245)"
+    C_HEADER="$(tput bold)$(tput setaf 231)"
     C_LABEL="$(tput setaf 222)"
     C_FRAME="$(tput setaf 240)"
-    C_BRAND="$(tput bold)$(tput setaf 51)"
     C_ORANGE="$(tput bold)$(tput setaf 208)"
-    C_NEON="$(tput bold)$(tput setaf 48)"
-    C_PANEL="$(tput setab 17)$(tput setaf 51)$(tput bold)"
+    C_BRAND="$C_ORANGE"
+    C_NEON="$(tput bold)$(tput setaf 214)"
+    C_PANEL="$(tput setaf 236)"
   elif [ "${ncolors:-0}" -ge 8 ]; then
     C_RESET="$(tput sgr0)"
     C_BOLD="$(tput bold)"
@@ -102,16 +102,16 @@ color_init() {
     C_OK="$(tput setaf 2)"
     C_WARN="$(tput setaf 3)"
     C_BAD="$(tput setaf 1)"
-    C_INFO="$(tput setaf 6)"
-    C_CMD="$(tput setaf 6)"
-    C_TIP="$(tput setaf 5)"
-    C_HEADER="$(tput bold)$(tput setaf 6)"
+    C_INFO="$(tput dim)"
+    C_CMD="$(tput setaf 3)"
+    C_TIP="$(tput dim)"
+    C_HEADER="$(tput bold)"
     C_LABEL="$(tput setaf 3)"
     C_FRAME="$(tput dim)"
-    C_BRAND="$(tput bold)$(tput setaf 6)"
     C_ORANGE="$(tput bold)$(tput setaf 3)"
-    C_NEON="$(tput bold)$(tput setaf 2)"
-    C_PANEL="$(tput rev)$(tput bold)"
+    C_BRAND="$C_ORANGE"
+    C_NEON="$(tput bold)$(tput setaf 3)"
+    C_PANEL="$(tput dim)"
   else
     C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""; C_INFO=""
     C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
@@ -168,34 +168,76 @@ intro() {
   [ "$UPDATE_ALL_DRY_RUN" = 0 ] || mode="DRY RUN"
 
   printf '\n'
-  printf '%b  __  ______  ____  ___  __________   ___    __    __%b\n' "$C_BRAND" "$C_RESET"
-  printf '%b / / / / __ \\/ __ \\/   |/_  __/ __/  /   |  / /   / /%b\n' "$C_BRAND" "$C_RESET"
-  printf '%b/ /_/ / /_/ / / / / /| | / / / _/   / /| | / /   / / %b\n' "$C_BRAND" "$C_RESET"
-  printf '%b\\____/ .___/_/ /_/_/ |_|/_/ /___/  /_/ |_|/_/___/___/%b\n' "$C_BRAND" "$C_RESET"
-  printf '%b    /_/          CYBERPUNK SAFE APP  //  %s%b\n' "$C_TIP" "$mode" "$C_RESET"
-  printf '%b+--------------------------------------------------------------------+%b\n' "$C_ORANGE" "$C_RESET"
-  printf '%b|%b %b%-66s%b %b|%b\n' "$C_ORANGE" "$C_RESET" "$C_PANEL" "BINARY CALLSIGN" "$C_RESET" "$C_ORANGE" "$C_RESET"
-  printf '%b|%b %b%-66s%b %b|%b\n' "$C_ORANGE" "$C_RESET" "$C_PANEL" "01110101 01110000 01100100 01100001 01110100 01100101 00101101" "$C_RESET" "$C_ORANGE" "$C_RESET"
-  printf '%b|%b %b%-66s%b %b|%b\n' "$C_ORANGE" "$C_RESET" "$C_PANEL" "01100001 01101100 01101100" "$C_RESET" "$C_ORANGE" "$C_RESET"
-  printf '%b+--------------------------------------------------------------------+%b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗      █████╗ ██╗     ██╗     %b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝     ██╔══██╗██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b ██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗       ███████║██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝       ██╔══██║██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗%b\n' "$C_ORANGE" "$C_RESET"
+  printf '%b  ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝%b\n' "$C_ORANGE" "$C_RESET"
+  printf '   %b%s%b      %s\n' "$C_HEADER" "mode" "$C_RESET" "$mode"
+  printf '   %b%s%b  %b01110101 01110000 01100100 01100001 01110100 01100101 00101101%b\n' "$C_HEADER" "callsign" "$C_RESET" "$C_TIP" "$C_RESET"
+  printf '             %b01100001 01101100 01101100%b\n' "$C_TIP" "$C_RESET"
   printf '\n'
-  scan_line "booting update nexus"
-  scan_line "checking package arteries"
-  scan_line "arming receipt ledger"
+  printf '%b▶  update-all%b\n' "$C_ORANGE" "$C_RESET"
 }
 
 banner() {
   local label="$1"
-  title_spin "$label"
-  printf '%b+------------------------------------------------------------+%b\n' "$C_FRAME" "$C_RESET"
-  printf '%b|%b %-58s %b|%b\n' "$C_FRAME" "$C_RESET" "$label" "$C_FRAME" "$C_RESET"
-  printf '%b+------------------------------------------------------------+%b\n' "$C_FRAME" "$C_RESET"
+  printf '\n'
+  if command -v figlet >/dev/null 2>&1 && figlet -f future "$label" 2>/dev/null | while IFS= read -r line; do
+    printf '%b%s%b\n' "$C_HEADER" "$line" "$C_RESET"
+  done; then
+    :
+  elif command -v figlet >/dev/null 2>&1 && figlet -f pagga "$label" 2>/dev/null | while IFS= read -r line; do
+    printf '%b%s%b\n' "$C_HEADER" "$line" "$C_RESET"
+  done; then
+    :
+  else
+    printf '%b── %s %b\n' "$C_FRAME" "$label" "$C_RESET"
+  fi
 }
 
 section() {
   local label="$1"
   printf '\n'
-  scan_line "$label" 26
+  printf '%b── %s %b\n' "$C_FRAME" "$label" "$C_RESET"
+  scene_strip "$label"
+}
+
+scene_strip() {
+  local label="$1" manager action i fill empty
+  anim_enabled || return 0
+
+  case "$label" in
+    *apt*update*) manager="apt"; action="fetch indexes" ;;
+    *apt*upgrade*) manager="apt"; action="resolve packages" ;;
+    *snap*) manager="snap"; action="refresh apps" ;;
+    *node*) manager="node"; action="check runtime" ;;
+    *corepack*) manager="corepack"; action="wire shims" ;;
+    *pnpm*) manager="pnpm"; action="activate latest" ;;
+    *yarn*) manager="yarn"; action="activate stable" ;;
+    *npm*self*) manager="npm"; action="self update" ;;
+    *npm*globals*) manager="npm"; action="global package graph" ;;
+    *claude*) manager="npm"; action="claude code" ;;
+    *codex*) manager="npm"; action="codex cli" ;;
+    *brew*) manager="brew"; action="cellar sweep" ;;
+    *uv*) manager="uv"; action="toolchain sweep" ;;
+    *pipx*) manager="pipx"; action="isolated CLIs" ;;
+    *rustup*) manager="rustup"; action="toolchains" ;;
+    *gh*) manager="gh"; action="extensions" ;;
+    *clean*) manager="apt"; action="cleanup gate" ;;
+    *) manager="sys"; action="inspect" ;;
+  esac
+
+  for ((i = 0; i <= 18; i += 3)); do
+    fill="$(printf '%*s' "$i" '')"
+    empty="$(printf '%*s' "$((18 - i))" '')"
+    fill="${fill// /▒}"
+    empty="${empty// /░}"
+    printf '\r   %b%-9s%b [%b%s%s%b] %b%s%b' "$C_ORANGE" "$manager" "$C_RESET" "$C_NEON" "$fill" "$empty" "$C_RESET" "$C_TIP" "$action" "$C_RESET"
+    sleep_tick 0.035
+  done
+  printf '\n'
 }
 
 run_bounded() {
@@ -334,11 +376,10 @@ tool_card() {
     esac
   fi
 
-  printf '%b┌─ %s%b\n' "$C_FRAME" "$title" "$C_RESET"
-  [ -n "$package" ] && printf '%b│%b package  %b%s%b\n' "$C_FRAME" "$C_RESET" "$C_CMD" "$package" "$C_RESET"
-  printf '%b│%b current  %s\n' "$C_FRAME" "$C_RESET" "$version"
-  printf '%b│%b does     %s\n' "$C_FRAME" "$C_RESET" "$desc"
-  printf '%b└%b\n' "$C_FRAME" "$C_RESET"
+  printf '   %b%-8s%b %b%s%b\n' "$C_LABEL" "unit" "$C_RESET" "$C_HEADER" "$title" "$C_RESET"
+  [ -n "$package" ] && printf '   %b%-8s%b %b%s%b\n' "$C_LABEL" "package" "$C_RESET" "$C_CMD" "$package" "$C_RESET"
+  printf '   %b%-8s%b %s\n' "$C_LABEL" "current" "$C_RESET" "$version"
+  printf '   %b%-8s%b %s\n' "$C_LABEL" "does" "$C_RESET" "$desc"
 }
 
 confirm_step() {
@@ -468,7 +509,7 @@ report() {
   _ua_ended_s="$(date +%s)"
   _ua_elapsed=$(( _ua_ended_s - _ua_started_s ))
   banner "REPORT"
-  bar="${C_FRAME}$(printf '%*s' 92 '' | tr ' ' '-')${C_RESET}"
+  bar="${C_FRAME}$(printf '%.0s─' {1..92})${C_RESET}"
   printf '%b\n' "$bar"
   printf '%b  update-all started%b  %s\n' "$C_HEADER" "$C_RESET" "$_ua_started_h"
   printf '%b  update-all elapsed%b  %ss\n' "$C_HEADER" "$C_RESET" "$_ua_elapsed"
@@ -485,17 +526,17 @@ report() {
     local icon color
 
     case "$stat" in
-      UPDATED)   icon="UP"; color="$C_OK" ;;
-      OK)        icon="OK"; color="$C_OK" ;;
+      UPDATED)   icon="↗"; color="$C_OK" ;;
+      OK)        icon="✓"; color="$C_OK" ;;
       UNCHANGED) icon="="; color="$C_WARN" ;;
-      FAIL)      icon="!!"; color="$C_BAD" ;;
-      SKIP)      icon="--"; color="$C_TIP" ;;
+      FAIL)      icon="✗"; color="$C_BAD" ;;
+      SKIP)      icon="·"; color="$C_TIP" ;;
       *)         icon="?"; color="$C_RESET" ;;
     esac
 
     [ -n "$before" ] || before="-"
     [ -n "$after" ] || after="-"
-    printf '  %-28s  %b%-2s %-7s%b  %-28.28s  %-28.28s\n' "$lbl" "$color" "$icon" "$stat" "$C_RESET" "$before" "$after"
+    printf '  %-28s  %b%s %-8s%b  %-28.28s  %-28.28s\n' "$lbl" "$color" "$icon" "$stat" "$C_RESET" "$before" "$after"
     if [ -n "$note" ]; then
       printf '  %-28s  %-10s  %b%s%b\n' "" "" "$C_TIP" "$note" "$C_RESET"
     fi
@@ -508,9 +549,9 @@ report() {
   printf '%b\n\n' "$bar"
 
   if [ "$rc" -eq 0 ]; then
-    printf '%bOK  update-all finished without failed steps%b\n\n' "$C_OK" "$C_RESET"
+    printf '%b✓  update-all finished without failed steps%b\n\n' "$C_OK" "$C_RESET"
   else
-    printf '%b!!  one or more steps failed - see FAIL rows above%b\n\n' "$C_BAD" "$C_RESET"
+    printf '%b✗  one or more steps failed - see FAIL rows above%b\n\n' "$C_BAD" "$C_RESET"
   fi
 }
 

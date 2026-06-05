@@ -1,6 +1,6 @@
 # Update All Cmd
 
-Cyberpunk-styled, local-first updater for Linux developer workstations and brave beginners who installed half the internet and now want help cleaning it up.
+Amber terminal-styled, local-first updater for Linux developer workstations and brave beginners who installed half the internet and now want help cleaning it up.
 
 ![Bash CLI](https://img.shields.io/badge/Bash-CLI-121011?logo=gnubash&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-workstations-FCC624?logo=linux&logoColor=111111)
@@ -24,10 +24,11 @@ update-all
 
 - One memorable command for many update surfaces.
 - Plain-English explanations before scary-looking package-manager output.
-- A cyberpunk terminal intro with animated scanner/title zones.
-- A high-contrast binary callsign panel under the opening art.
+- The original orange block `UPDATE ALL` intro.
+- Thin readable section titles with restrained amber motion.
+- A compact binary callsign under the opening art.
 - Color-coded streamed logs for warnings, failures, updates, removals, funding notices, and important package names.
-- Short package/tool cards before noisy updater output.
+- Short package/tool notes before noisy updater output.
 - Before/after tracking and a final report.
 - Quiet modes for logs, scripts, accessibility, and plain terminals.
 - Public-safe configuration: no passwords, tokens, or private machine values stored in the repo.
@@ -46,24 +47,24 @@ It is also useful for experienced developers who want a quick workstation update
 ## Preview
 
 ```text
-UPDATE ALL  //  CYBERPUNK SAFE APP
+ ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗      █████╗ ██╗     ██╗
+ ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝     ██╔══██╗██║     ██║
+ ██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗       ███████║██║     ██║
+ ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝       ██╔══██║██║     ██║
+ ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗
+  ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝
 
-+--------------------------------------------------------------------+
-| BINARY CALLSIGN                                                    |
-| 01110101 01110000 01100100 01100001 01110100 01100101 00101101     |
-| 01100001 01101100 01101100                                         |
-+--------------------------------------------------------------------+
+▶  update-all
 
->> booting update nexus
->> checking package arteries
->> arming receipt ledger
+┏┓╻┏━┓┏┳┓
+┃┗┫┣━┛┃┃┃
+╹ ╹╹  ╹ ╹
 
-== NPM ==
->> codex
-|- OpenAI Codex CLI
-|  package  @openai/codex@latest
-|  current  /path/to/codex codex-cli 0.x
-|  does     OpenAI local coding-agent CLI. Source: npm registry package metadata.
+── codex
+   unit     OpenAI Codex CLI
+   package  @openai/codex@latest
+   current  /path/to/codex codex-cli 0.x
+   does     OpenAI local coding-agent CLI. Source: npm registry package metadata.
 
 == REPORT ==
 STEP                          RESULT      BEFORE                        AFTER
