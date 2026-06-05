@@ -13,6 +13,8 @@ Developer machines collect package managers. Updating them one by one is slow, e
 ## What It Does
 
 - Shows a cyberpunk terminal intro, title zones, scanners, and progress-style animations.
+- Color-codes streamed updater logs so installs, updates, warnings, failures, removals, funding notices, and important package names are easier to spot.
+- Prints short tool/package cards before noisy steps so you can see what is being updated and why.
 - Detects missing tools and records them as `SKIP` instead of failing the whole run.
 - Tracks before/after versions where useful.
 - Keeps sudo alive during the run after one authentication step.
@@ -44,12 +46,16 @@ UPDATE ALL  //  CYBERPUNK SAFE APP
 [##################################] booting update nexus
 [+] SYSTEM ONLINE
 >> apt update
+| current  0 upgradable
+| does     Ubuntu/Debian system package manager; updates OS packages and security fixes.
 >> apt upgrade
 [+] REPORT ONLINE
 STEP                          RESULT      BEFORE                       AFTER
 apt update                    OK OK
 apt upgrade                   = UNCHANGED  0 upgradable                 0 upgradable
 ```
+
+Package descriptions are intentionally short. npm package descriptions come from npm registry metadata; system-tool descriptions come from local package metadata or the tool's public role.
 
 ## How It Works
 

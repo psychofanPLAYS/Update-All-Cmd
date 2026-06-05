@@ -85,6 +85,7 @@ color_init() {
     C_OK="$(tput setaf 35)"
     C_WARN="$(tput setaf 214)"
     C_BAD="$(tput setaf 203)"
+    C_INFO="$(tput setaf 81)"
     C_CMD="$(tput setaf 117)"
     C_TIP="$(tput setaf 213)"
     C_HEADER="$(tput bold)$(tput setaf 39)"
@@ -101,6 +102,7 @@ color_init() {
     C_OK="$(tput setaf 2)"
     C_WARN="$(tput setaf 3)"
     C_BAD="$(tput setaf 1)"
+    C_INFO="$(tput setaf 6)"
     C_CMD="$(tput setaf 6)"
     C_TIP="$(tput setaf 5)"
     C_HEADER="$(tput bold)$(tput setaf 6)"
@@ -111,7 +113,7 @@ color_init() {
     C_NEON="$(tput bold)$(tput setaf 2)"
     C_PANEL="$(tput rev)$(tput bold)"
   else
-    C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""
+    C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""; C_INFO=""
     C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
     C_BRAND=""; C_ORANGE=""; C_NEON=""
     C_PANEL=""
@@ -199,11 +201,15 @@ section() {
 run_bounded() {
   local limit="$1"
   shift
+  local code
   if command -v timeout >/dev/null 2>&1; then
-    timeout --foreground "$limit" "$@"
+    timeout --foreground "$limit" "$@" 2>&1 | color_log_stream
+    code=${PIPESTATUS[0]}
   else
-    "$@"
+    "$@" 2>&1 | color_log_stream
+    code=${PIPESTATUS[0]}
   fi
+  return "$code"
 }
 
 show_cmd() {
@@ -213,41 +219,126 @@ show_cmd() {
 }
 
 run_cmd() {
+  local code
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
     show_cmd "$@"
     return 0
   fi
-  "$@"
+  "$@" 2>&1 | color_log_stream
+  code=${PIPESTATUS[0]}
+  return "$code"
 }
 
 run_shell() {
-  local script="$1"
+  local script="$1" code
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
     printf '%b$%b bash -lc %q\n' "$C_CMD" "$C_RESET" "$script"
     return 0
   fi
-  bash -lc "$script"
+  bash -lc "$script" 2>&1 | color_log_stream
+  code=${PIPESTATUS[0]}
+  return "$code"
 }
 
 sudo_cmd() {
+  local code
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
     show_cmd sudo "$@"
     return 0
   fi
 
   if ! command -v sudo >/dev/null 2>&1; then
-    "$@"
-    return $?
+    "$@" 2>&1 | color_log_stream
+    code=${PIPESTATUS[0]}
+    return "$code"
   fi
   if sudo -n true 2>/dev/null; then
-    sudo "$@"
-    return $?
+    sudo "$@" 2>&1 | color_log_stream
+    code=${PIPESTATUS[0]}
+    return "$code"
   fi
   if [ -n "${UPDATE_ALL_SUDO_SECRET_KEY:-}" ] && command -v secret >/dev/null 2>&1 && secret has "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null; then
-    secret get "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null | sudo -S -p '' "$@"
-    return $?
+    secret get "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null | sudo -S -p '' "$@" 2>&1 | color_log_stream
+    code=${PIPESTATUS[1]}
+    return "$code"
   fi
-  sudo "$@"
+  sudo "$@" 2>&1 | color_log_stream
+  code=${PIPESTATUS[0]}
+  return "$code"
+}
+
+color_log_stream() {
+  local line lower
+  while IFS= read -r line; do
+    lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+    case "$lower" in
+      *error*|*failed*|*fatal*|e:\ *|*cannot\ *|*not\ found*)
+        printf '%b%s%b\n' "$C_BAD" "$line" "$C_RESET"
+        ;;
+      *warn*|*deprecated*|*audit*|*vulnerab*|*notice*|*held\ back*)
+        printf '%b%s%b\n' "$C_WARN" "$line" "$C_RESET"
+        ;;
+      *added*|*changed*|*updated*|*upgraded*|*installed*|*success*|*done*|*already\ up\ to\ date*)
+        printf '%b%s%b\n' "$C_OK" "$line" "$C_RESET"
+        ;;
+      *removed*|*removing*|*autoremove*|*prune*|*cleanup*)
+        printf '%b%s%b\n' "$C_TIP" "$line" "$C_RESET"
+        ;;
+      *fund*|*funding*|*donation*)
+        printf '%b%s%b\n' "$C_TIP" "$line" "$C_RESET"
+        ;;
+      *@anthropic-ai/claude-code*|*@openai/codex*|*npm@*|*pnpm@*|*yarn@*)
+        printf '%b%s%b\n' "$C_HEADER" "$line" "$C_RESET"
+        ;;
+      *)
+        printf '%s\n' "$line"
+        ;;
+    esac
+  done
+}
+
+describe_tool() {
+  case "$1" in
+    dpkg) printf 'Debian package database integrity check; catches interrupted installs before apt runs.' ;;
+    apt) printf 'Ubuntu/Debian system package manager; updates OS packages and security fixes.' ;;
+    snap) printf 'Canonical app package system; refreshes installed snap applications.' ;;
+    flatpak) printf 'Sandboxed desktop app package system; updates installed Flatpak apps.' ;;
+    node) printf 'JavaScript runtime used by npm, Codex, Claude Code, and many developer CLIs.' ;;
+    corepack) printf 'Node-shipped package-manager shim that activates pnpm/yarn without manual installs.' ;;
+    pnpm) printf 'Fast, disk-space efficient JavaScript package manager. Source: npm registry package metadata.' ;;
+    yarn) printf 'Fast, reliable, secure JavaScript dependency management. Source: npm registry package metadata.' ;;
+    npm) printf 'JavaScript package manager used here for global CLI tools. Source: npm registry package metadata.' ;;
+    npm-globals) printf 'Updates globally installed npm CLIs already present on PATH.' ;;
+    claude) printf 'Anthropic terminal assistant for codebase work and command workflows. Source: npm registry metadata.' ;;
+    codex) printf 'OpenAI local coding-agent CLI. Source: npm registry package metadata.' ;;
+    hermes) printf 'Skipped on purpose: active agent runtimes should not be surprise-upgraded mid-workflow.' ;;
+    brew) printf 'Homebrew package manager for Linux/macOS developer tools and formulae.' ;;
+    uv) printf 'Fast Python package and tool manager; upgraded by its owning package manager here.' ;;
+    pipx) printf 'Installs and upgrades isolated Python CLI applications.' ;;
+    rustup) printf 'Rust toolchain manager; updates rustc/cargo toolchains when installed.' ;;
+    gh) printf 'GitHub official command-line tool for PRs, issues, and repo workflows. Source: Ubuntu apt metadata.' ;;
+    cleanup) printf 'Removes unneeded apt packages and clears package cache after successful system updates.' ;;
+    *) printf 'Updater step.' ;;
+  esac
+}
+
+tool_card() {
+  local key="$1" title="$2" version="${3:-}" package="${4:-}"
+  local desc
+  desc="$(describe_tool "$key")"
+  [ -n "$version" ] || version="$(version_of "$key" 2>/dev/null || true)"
+  if [ -z "$version" ]; then
+    case "$key" in
+      cleanup) version="post-update maintenance" ;;
+      *) version="not installed" ;;
+    esac
+  fi
+
+  printf '%b┌─ %s%b\n' "$C_FRAME" "$title" "$C_RESET"
+  [ -n "$package" ] && printf '%b│%b package  %b%s%b\n' "$C_FRAME" "$C_RESET" "$C_CMD" "$package" "$C_RESET"
+  printf '%b│%b current  %s\n' "$C_FRAME" "$C_RESET" "$version"
+  printf '%b│%b does     %s\n' "$C_FRAME" "$C_RESET" "$desc"
+  printf '%b└%b\n' "$C_FRAME" "$C_RESET"
 }
 
 pkg_json_version() {
@@ -258,6 +349,12 @@ pkg_json_version() {
 
 version_of() {
   case "$1" in
+    dpkg)
+      command -v dpkg >/dev/null 2>&1 && dpkg --version 2>/dev/null | sed -n '1p'
+      ;;
+    apt)
+      command -v apt-get >/dev/null 2>&1 && apt-get --version 2>/dev/null | sed -n '1p'
+      ;;
     apt-upgradable)
       apt list --upgradable 2>/dev/null | awk 'NR>1{n++} END{printf "%s upgradable", n+0}'
       ;;
@@ -271,6 +368,9 @@ version_of() {
       local bundled="$HOME/.local/lib/node-current/lib/node_modules/npm/package.json" bundled_v
       bundled_v="$(pkg_json_version "$bundled" 2>/dev/null || true)"
       [ -n "$bundled_v" ] && printf '%s %s' "$bundled" "$bundled_v"
+      ;;
+    npm-globals)
+      command -v npm >/dev/null 2>&1 && printf 'prefix %s' "$(npm prefix -g 2>/dev/null)"
       ;;
     corepack)
       command -v corepack >/dev/null 2>&1 && printf '%s %s' "$(command -v corepack)" "$(corepack --version 2>/dev/null)"
@@ -443,6 +543,7 @@ run_updates() {
 
   banner "SYSTEM"
   section "dpkg audit"
+  tool_card "dpkg" "dpkg audit"
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
     show_cmd sudo dpkg --audit
     track "dpkg audit" 0 "" "" "dry-run: dpkg state not changed"
@@ -464,11 +565,13 @@ run_updates() {
   fi
 
   section "apt update"
+  tool_card "apt" "apt package index"
   sudo_cmd apt-get update -y
   track "apt update" $?
 
   before="$(version_of apt-upgradable 2>/dev/null || true)"
   section "apt upgrade"
+  tool_card "apt" "apt package upgrade" "$before"
   sudo_cmd apt-get -o Dpkg::Options::=--force-confold upgrade -y
   after="$(version_of apt-upgradable 2>/dev/null || true)"
   track "apt upgrade" $? "$before" "$after"
@@ -476,6 +579,7 @@ run_updates() {
   if command -v snap >/dev/null 2>&1; then
     before="$(version_of snap 2>/dev/null || true)"
     section "snap refresh"
+    tool_card "snap" "snap packages" "$before"
     sudo_cmd snap refresh
     after="$(version_of snap 2>/dev/null || true)"
     track "snap refresh" $? "$before" "$after"
@@ -486,6 +590,7 @@ run_updates() {
   if command -v flatpak >/dev/null 2>&1; then
     before="$(version_of flatpak 2>/dev/null || true)"
     section "flatpak update"
+    tool_card "flatpak" "flatpak apps" "$before"
     run_cmd flatpak update -y --noninteractive
     after="$(version_of flatpak 2>/dev/null || true)"
     track "flatpak update" $? "$before" "$after"
@@ -497,6 +602,7 @@ run_updates() {
   if command -v update-node >/dev/null 2>&1; then
     before="$(version_of node 2>/dev/null || true)"
     section "node runtime"
+    tool_card "node" "Node.js runtime" "$before" "node"
     run_cmd update-node
     after="$(version_of node 2>/dev/null || true)"
     track "node runtime" $? "$before" "$after" "update-node keeps Node inside the current major line"
@@ -507,6 +613,7 @@ run_updates() {
   if command -v corepack >/dev/null 2>&1; then
     before="$(version_of corepack 2>/dev/null || true)"
     section "corepack enable"
+    tool_card "corepack" "Corepack shims" "$before" "corepack"
     if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
       show_cmd env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable
     else
@@ -519,6 +626,7 @@ run_updates() {
     if command -v pnpm >/dev/null 2>&1; then
       before="$(version_of pnpm 2>/dev/null || true)"
       section "pnpm self-update"
+      tool_card "pnpm" "pnpm package manager" "$before" "pnpm@latest"
       if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
         show_cmd env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare pnpm@latest --activate
       else
@@ -533,6 +641,7 @@ run_updates() {
     if command -v yarn >/dev/null 2>&1; then
       before="$(version_of yarn 2>/dev/null || true)"
       section "yarn self-update"
+      tool_card "yarn" "Yarn package manager" "$before" "yarn@stable"
       if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
         show_cmd env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare yarn@stable --activate
       else
@@ -553,22 +662,26 @@ run_updates() {
   if command -v npm >/dev/null 2>&1; then
     before="$(version_of npm-active 2>/dev/null || true)"
     section "npm self-update"
+    tool_card "npm" "npm self-update" "$before" "npm@latest"
     run_cmd npm install -g npm@latest --no-fund
     after="$(version_of npm-active 2>/dev/null || true)"
     track "npm self-update" $? "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in REPORT"
 
     section "npm globals"
+    tool_card "npm-globals" "npm global packages"
     run_cmd npm update -g --no-fund
     track "npm globals" $?
 
     before="$(version_of claude 2>/dev/null || true)"
     section "claude code"
+    tool_card "claude" "Claude Code CLI" "$before" "@anthropic-ai/claude-code@latest"
     run_cmd npm install -g @anthropic-ai/claude-code@latest --no-fund
     after="$(version_of claude 2>/dev/null || true)"
     track "claude code" $? "$before" "$after"
 
     before="$(version_of codex 2>/dev/null || true)"
     section "codex"
+    tool_card "codex" "OpenAI Codex CLI" "$before" "@openai/codex@latest"
     run_cmd npm install -g @openai/codex@latest --no-fund
     after="$(version_of codex 2>/dev/null || true)"
     track "codex" $? "$before" "$after"
@@ -586,6 +699,7 @@ run_updates() {
   if command -v brew >/dev/null 2>&1; then
     before="$(version_of brew 2>/dev/null || true)"
     section "brew update + upgrade"
+    tool_card "brew" "Homebrew formulae" "$before"
     run_shell 'brew update && brew upgrade'
     after="$(version_of brew 2>/dev/null || true)"
     track "brew upgrade" $? "$before" "$after" "Homebrew updates itself and brew-managed formulae"
@@ -597,17 +711,20 @@ run_updates() {
     before="$(version_of uv 2>/dev/null || true)"
     if command -v brew >/dev/null 2>&1 && case "$(command -v uv)" in /home/linuxbrew/*) true ;; *) false ;; esac; then
       section "uv upgrade via brew"
+      tool_card "uv" "uv Python toolchain" "$before" "uv"
       run_shell 'brew update && brew upgrade uv'
       after="$(version_of uv 2>/dev/null || true)"
       track "uv upgrade (brew)" $? "$before" "$after" "uv is managed by Homebrew on this machine"
     else
       section "uv self update"
+      tool_card "uv" "uv Python toolchain" "$before" "uv"
       run_cmd uv self update
       after="$(version_of uv 2>/dev/null || true)"
       track "uv self update" $? "$before" "$after"
     fi
 
     section "uv tool upgrade"
+    tool_card "uv" "uv-installed tools"
     run_cmd uv tool upgrade --all
     track "uv tool upgrade" $?
   else
@@ -618,6 +735,7 @@ run_updates() {
   if command -v pipx >/dev/null 2>&1; then
     before="$(version_of pipx 2>/dev/null || true)"
     section "pipx upgrade-all"
+    tool_card "pipx" "pipx Python CLIs" "$before"
     run_cmd pipx upgrade-all
     after="$(version_of pipx 2>/dev/null || true)"
     track "pipx upgrade-all" $? "$before" "$after"
@@ -628,6 +746,7 @@ run_updates() {
   if command -v rustup >/dev/null 2>&1; then
     before="$(version_of rustup 2>/dev/null || true)"
     section "rustup update"
+    tool_card "rustup" "Rust toolchains" "$before"
     run_cmd rustup update
     after="$(version_of rustup 2>/dev/null || true)"
     track "rustup update" $? "$before" "$after"
@@ -643,6 +762,7 @@ run_updates() {
   if command -v gh >/dev/null 2>&1; then
     before="$(version_of gh 2>/dev/null || true)"
     section "gh extension upgrade"
+    tool_card "gh" "GitHub CLI extensions" "$before"
     run_cmd gh extension upgrade --all
     after="$(version_of gh 2>/dev/null || true)"
     track "gh extensions" $? "$before" "$after"
@@ -652,6 +772,7 @@ run_updates() {
 
   banner "CLEANUP"
   section "apt autoremove + clean"
+  tool_card "cleanup" "apt cleanup"
   sudo_cmd apt-get autoremove -y
   local clean_a=$?
   sudo_cmd apt-get clean
