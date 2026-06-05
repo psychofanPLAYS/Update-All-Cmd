@@ -341,6 +341,24 @@ tool_card() {
   printf '%b└%b\n' "$C_FRAME" "$C_RESET"
 }
 
+confirm_step() {
+  local prompt="$1" answer
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    return 0
+  fi
+  if [ ! -t 0 ]; then
+    printf '%bSKIP%b %s requires an interactive terminal. Nothing removed.\n' "$C_WARN" "$C_RESET" "$prompt"
+    return 1
+  fi
+
+  printf '%b?%b %s [y/N] ' "$C_WARN" "$C_RESET" "$prompt"
+  IFS= read -r answer || return 1
+  case "$answer" in
+    y|Y|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 pkg_json_version() {
   local file="$1"
   [ -r "$file" ] || return 1
@@ -773,14 +791,18 @@ run_updates() {
   banner "CLEANUP"
   section "apt autoremove + clean"
   tool_card "cleanup" "apt cleanup"
-  sudo_cmd apt-get autoremove -y
-  local clean_a=$?
-  sudo_cmd apt-get clean
-  local clean_b=$?
-  if [ "$clean_a" -eq 0 ] && [ "$clean_b" -eq 0 ]; then
-    track "apt autoremove" 0
+  if confirm_step "Run apt autoremove and apt clean now? This can remove packages apt says are no longer needed."; then
+    sudo_cmd apt-get autoremove -y
+    local clean_a=$?
+    sudo_cmd apt-get clean
+    local clean_b=$?
+    if [ "$clean_a" -eq 0 ] && [ "$clean_b" -eq 0 ]; then
+      track "apt autoremove" 0
+    else
+      track "apt autoremove" 1 "" "" "autoremove exit=$clean_a, clean exit=$clean_b"
+    fi
   else
-    track "apt autoremove" 1 "" "" "autoremove exit=$clean_a, clean exit=$clean_b"
+    skip_step "apt autoremove" "skipped by user; no packages removed or cache cleaned"
   fi
 }
 

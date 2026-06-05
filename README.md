@@ -1,27 +1,18 @@
 # Update All Cmd
 
-Cyberpunk-flavored, local-first updater for Linux developer workstations.
+Cyberpunk-styled, local-first updater for Linux developer workstations and brave beginners who installed half the internet and now want help cleaning it up.
 
-`update-all` runs a full update sweep across the usual developer stack: apt, snap, flatpak, Node, corepack, pnpm, yarn, npm globals, Claude Code, Codex, Homebrew, uv, pipx, rustup, and GitHub CLI extensions.
+![Bash CLI](https://img.shields.io/badge/Bash-CLI-121011?logo=gnubash&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-workstations-FCC624?logo=linux&logoColor=111111)
+![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)
+![Dry run](https://img.shields.io/badge/dry--run-supported-2563eb)
+![Local first](https://img.shields.io/badge/local--first-no%20cloud%20upload-16a34a)
 
-## Why It Exists
+So you installed OpenClaw, Hermes, a pile of npm tools, maybe some Python CLIs, maybe Homebrew on Linux, and now the terminal looks like it is speaking electricity? `update-all` is here to help.
 
-Developer machines collect package managers. Updating them one by one is slow, easy to forget, and easy to misunderstand when tools print noisy funding notices or version messages.
+`update-all` is a standalone Bash command that explains and updates the developer tools people actually use: system packages, desktop package managers, Node tooling, global CLIs, Python/Rust tools, Homebrew/Linuxbrew, and GitHub extensions.
 
-`update-all` gives the update run one clear command, visible phases, version before/after tracking, and a final receipt.
-
-## What It Does
-
-- Shows a cyberpunk terminal intro, title zones, scanners, and progress-style animations.
-- Color-codes streamed updater logs so installs, updates, warnings, failures, removals, funding notices, and important package names are easier to spot.
-- Prints short tool/package cards before noisy steps so you can see what is being updated and why.
-- Detects missing tools and records them as `SKIP` instead of failing the whole run.
-- Tracks before/after versions where useful.
-- Keeps sudo alive during the run after one authentication step.
-- Uses an optional existing `secret` helper for sudo on hosts that already have it.
-- Supports `--dry-run`, `--no-anim`, and `--no-color` for safer testing and CI output.
-
-## First Run
+It is meant for Ubuntu/Linux developer workstations. It is not a fleet patching system or production server automation.
 
 ```bash
 ./install.sh
@@ -29,80 +20,258 @@ update-all --dry-run
 update-all
 ```
 
-## Common Commands
+## What You Get
 
-```bash
-update-all
-update-all --dry-run
-update-all --no-anim
-update-all --no-color
-UPDATE_ALL_COREPACK_TIMEOUT=120s update-all
-```
+- One memorable command for many update surfaces.
+- Plain-English explanations before scary-looking package-manager output.
+- A cyberpunk terminal intro with animated scanner/title zones.
+- A high-contrast binary callsign panel under the opening art.
+- Color-coded streamed logs for warnings, failures, updates, removals, funding notices, and important package names.
+- Short package/tool cards before noisy updater output.
+- Before/after tracking and a final report.
+- Quiet modes for logs, scripts, accessibility, and plain terminals.
+- Public-safe configuration: no passwords, tokens, or private machine values stored in the repo.
 
-## Example Output
+## Who This Is For
+
+This is for people who are learning by doing:
+
+- You copied install commands from docs, Discord, GitHub, or a YouTube tutorial.
+- You have `npm`, `pipx`, `uv`, `brew`, `gh`, `snap`, or random CLIs installed and you are not sure what updates what.
+- You want the terminal to explain itself instead of dumping a wall of text and expecting you to already know everything.
+- You want local-first tooling that teaches you what is happening before it changes your machine.
+
+It is also useful for experienced developers who want a quick workstation update sweep with a readable receipt.
+
+## Preview
 
 ```text
 UPDATE ALL  //  CYBERPUNK SAFE APP
-[##################################] booting update nexus
-[+] SYSTEM ONLINE
->> apt update
-| current  0 upgradable
-| does     Ubuntu/Debian system package manager; updates OS packages and security fixes.
->> apt upgrade
-[+] REPORT ONLINE
-STEP                          RESULT      BEFORE                       AFTER
-apt update                    OK OK
-apt upgrade                   = UNCHANGED  0 upgradable                 0 upgradable
+
++--------------------------------------------------------------------+
+| BINARY CALLSIGN                                                    |
+| 01110101 01110000 01100100 01100001 01110100 01100101 00101101     |
+| 01100001 01101100 01101100                                         |
++--------------------------------------------------------------------+
+
+>> booting update nexus
+>> checking package arteries
+>> arming receipt ledger
+
+== NPM ==
+>> codex
+|- OpenAI Codex CLI
+|  package  @openai/codex@latest
+|  current  /path/to/codex codex-cli 0.x
+|  does     OpenAI local coding-agent CLI. Source: npm registry package metadata.
+
+== REPORT ==
+STEP                          RESULT      BEFORE                        AFTER
+codex                         = UNCHANGED  /path/to/codex 0.x            /path/to/codex 0.x
 ```
 
-Package descriptions are intentionally short. npm package descriptions come from npm registry metadata; system-tool descriptions come from local package metadata or the tool's public role.
+The real run streams package-manager output live. Use `--no-anim` or `--no-color` when you want simpler logs.
 
-## How It Works
+## Install
 
-The command is a standalone Bash script in `bin/update-all`. It avoids storing credentials and does not require a service or daemon.
+Run from the repository:
 
-Each update action is wrapped with a small reporting layer:
+```bash
+./bin/update-all --dry-run
+```
 
-- `OK` means the command exited successfully.
-- `UPDATED` means before/after values changed.
-- `UNCHANGED` means before/after values were available and equal.
-- `SKIP` means the tool is not installed or intentionally excluded.
-- `FAIL` means one step failed; the report shows which one.
+Install into your user-local `PATH`:
 
-## Requirements
+```bash
+./install.sh
+update-all --dry-run
+```
 
-- Bash
-- Standard Unix tools: `sed`, `awk`, `tr`, `date`
-- Optional: `sudo`, `timeout`, `tput`
-- Optional package managers depending on your machine: apt, snap, flatpak, npm, brew, uv, pipx, rustup, gh
+If `~/.local/bin` is not on your `PATH`, add it to your shell profile:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+## Usage
+
+```bash
+update-all [options]
+```
+
+| Option | What it does |
+| --- | --- |
+| `--dry-run` | Prints the update commands and report path without intentionally applying updates. |
+| `--no-anim` | Disables animated intro/scanner effects. |
+| `--no-color` | Disables ANSI color output. |
+| `-h`, `--help` | Shows command help. |
+
+Common flows:
+
+```bash
+# See the updater plan first
+update-all --dry-run
+
+# Run the workstation update sweep
+update-all
+
+# Quiet log-friendly output
+update-all --no-anim --no-color
+
+# Safest demo/smoke-test mode
+update-all --dry-run --no-anim --no-color
+```
+
+## Supported Update Surfaces
+
+Missing tools are reported as `SKIP`, not treated as fatal.
+
+| Tool | Area |
+| --- | --- |
+| `dpkg` / `apt` | Debian/Ubuntu package health, index updates, upgrades, opt-in cleanup |
+| `snap` | Snap package refreshes |
+| `flatpak` | Flatpak app updates |
+| `node` / `update-node` | Local Node.js runtime upkeep |
+| `corepack` | Node package-manager shims |
+| `pnpm` | pnpm package-manager activation/update |
+| `yarn` | Yarn package-manager activation/update |
+| `npm` globals | Global npm CLIs |
+| Claude Code | Anthropic's terminal coding assistant CLI |
+| Codex | OpenAI's local coding-agent CLI |
+| Homebrew/Linuxbrew | Brew-managed developer tools |
+| `uv` | Python package/tool manager |
+| `pipx` | Isolated Python CLI apps |
+| `rustup` | Rust toolchains |
+| `gh extension` | GitHub CLI extensions |
 
 ## Configuration
 
+### Terminal Output
+
 ```bash
-UPDATE_ALL_COREPACK_TIMEOUT=90s
-UPDATE_ALL_ANIM=0
-UPDATE_ALL_COLOR=0
-UPDATE_ALL_SUDO_SECRET_KEY=my-sudo-secret
+UPDATE_ALL_ANIM=0 update-all
+UPDATE_ALL_COLOR=0 update-all
+update-all --no-anim --no-color
 ```
 
-## Safety / Privacy Notes
+### Corepack Timeout
 
-- No API keys, tokens, passwords, or machine-specific secrets are stored in this repository.
-- The script may call an existing `secret get "$UPDATE_ALL_SUDO_SECRET_KEY"` helper if you configure one, but that helper is optional and external to this project.
-- `Hermes Agent` is intentionally not updated here, because changing an active agent runtime can break ongoing workflows.
-- Use `update-all --dry-run` before a real run if you are adapting the command to a new machine.
+Corepack steps are bounded so they do not hang forever:
+
+```bash
+UPDATE_ALL_COREPACK_TIMEOUT=120s update-all
+```
+
+### Optional Sudo Secret Helper
+
+`update-all` does not store sudo passwords. If your workstation already has a compatible external `secret` helper, you can point the script at its key name:
+
+```bash
+export UPDATE_ALL_SUDO_SECRET_KEY="your-key-name"
+```
+
+Keep secret values out of shell history, committed files, screenshots, and logs. If this variable is not configured, normal interactive `sudo` behavior may apply.
+
+## Safety And Privacy
+
+`update-all` is designed to be visible and boringly safe.
+
+- No cloud upload by default.
+- No telemetry layer.
+- Package managers still make their normal network requests to download updates; `update-all` just keeps the control flow local and visible.
+- No tokens, API keys, or passwords stored in this repository.
+- No replacement for first-party package managers; it calls them.
+- Cleanup/removal steps ask first in live mode and skip if the terminal is not interactive.
+- `Hermes Agent` is intentionally skipped to avoid surprise-upgrading active agent workflows.
+- Best for personal developer workstations, not production servers.
+
+For production machines, use purpose-built patching, configuration-management, maintenance-window, and rollback tooling.
+
+## Planned Safety Coach Mode
+
+This is the next big direction for the project.
+
+The goal is not "delete scary things automatically." The goal is:
+
+1. Detect tools and package managers you have installed.
+2. Explain what each one is in plain language.
+3. Flag packages that are deprecated, removed from their registry, failing audits, or otherwise suspicious.
+4. Ask before touching special stacks such as OpenClaw, Hermes, or other agent runtimes.
+5. Ask again before removing anything.
+6. Show the exact command it is about to run.
+7. Leave a receipt so you can learn from what happened.
+
+Planned examples:
+
+```text
+OpenClaw detected.
+This looks like an agent/runtime project, not a normal npm package.
+Do you want update-all to check it, skip it, or leave it alone forever?
+```
+
+```text
+Package flagged:
+left-pad-example
+Reason: package is deprecated or missing from registry metadata.
+Recommended action: review first. Do not auto-remove.
+```
+
+Removal will stay opt-in. A beginner-friendly tool should protect people from accidents, not create faster accidents.
+
+## Verification
+
+Run these before committing changes:
+
+```bash
+bash -n bin/update-all
+bash -n install.sh
+./bin/update-all --help
+./bin/update-all --dry-run --no-anim --no-color
+cspell README.md bin/update-all install.sh
+git diff --check
+```
+
+`cspell` is optional for users, but useful for maintainers:
+
+```bash
+npm install -g cspell@latest --no-fund
+```
+
+## Project Layout
+
+```text
+.
+|-- bin/
+|   `-- update-all
+|-- cspell.json
+|-- install.sh
+|-- LICENSE
+`-- README.md
+```
+
+Primary command: [bin/update-all](bin/update-all)
 
 ## Project Status
 
-Personal utility, public-safe prototype. It is best suited for Ubuntu/Linux developer machines and should be reviewed before use on production servers.
+Personal utility, public-safe prototype. The command is useful today, but the repo is still early: there is no CI workflow yet and full integration tests should use mocked package-manager commands.
 
 ## Roadmap
 
-- Optional JSON receipt output for agents.
-- Optional log file output under `~/.local/state/update-all/`.
-- Screenshot or asciinema demo for the GitHub README.
-- Per-step allow/deny configuration.
+- Add mocked integration tests for package-manager flows.
+- Add Safety Coach Mode for deprecated/removed/advisory package flagging.
+- Add interactive prompts for OpenClaw, Hermes, and other agent/runtime stacks.
+- Add optional JSON or Markdown run receipts.
+- Add a screenshot or asciinema demo for the README.
+- Add clearer per-manager failure summaries.
+- Add machine-readable output for agent/script workflows.
+- Add safer detection for unusual distributions and package-manager variants.
+
+## References
+
+- GitHub recommends README files explain why a project is useful, what people can do with it, and how to use it.
+- This README follows the current landing-page pattern: fast value proposition, quick start above the fold, truthful badges, visual preview, safety notes, and verification commands.
+- npm package descriptions used by the script are intentionally short and source-aware where package metadata is available.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
