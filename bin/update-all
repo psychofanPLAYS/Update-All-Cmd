@@ -91,14 +91,17 @@ color_init() {
     C_HEADER="$(tput bold)$(tput setaf 231)"
     C_LABEL="$(tput setaf 222)"
     C_FRAME="$(tput setaf 240)"
-    C_ORANGE="$(tput bold)$(tput setaf 208)"
-    C_UNIT="$(tput bold)$(tput setaf 202)"
-    C_PACKAGE="$(tput bold)$(tput setaf 214)"
-    C_PURPOSE="$(tput setaf 166)"
-    C_VERSION_LABEL="$(tput bold)$(tput setaf 208)"
-    C_VERSION_BEFORE="$(tput bold)$(tput setaf 226)"
-    C_VERSION_AFTER="$(tput bold)$(tput setaf 46)"
-    C_RESULT="$(tput setaf 214)"
+    C_ORANGE="$(tput bold)$(tput setaf 214)"
+    C_UNIT="$(tput bold)$(tput setaf 215)"
+    C_PACKAGE="$(tput bold)$(tput setaf 222)"
+    C_PURPOSE="$(tput setaf 109)"
+    C_VERSION_LABEL="$(tput setaf 250)"
+    C_VERSION_BEFORE_LABEL="$(tput setaf 66)"
+    C_VERSION_AFTER_LABEL="$(tput setaf 109)"
+    C_VERSION_BEFORE="$(tput bold)$(tput setaf 159)"
+    C_VERSION_AFTER="$(tput bold)$(tput setaf 121)"
+    C_PATH="$(tput setaf 110)"
+    C_RESULT="$(tput setaf 179)"
     C_LOG="$(tput setaf 244)"
     C_APT_SOURCE="$(tput setaf 67)"
     C_APT_PROGRESS="$(tput setaf 215)"
@@ -122,10 +125,13 @@ color_init() {
     C_ORANGE="$(tput bold)$(tput setaf 3)"
     C_UNIT="$C_ORANGE"
     C_PACKAGE="$(tput bold)$(tput setaf 3)"
-    C_PURPOSE="$(tput setaf 1)"
-    C_VERSION_LABEL="$(tput bold)$(tput setaf 3)"
+    C_PURPOSE="$(tput setaf 6)"
+    C_VERSION_LABEL="$(tput bold)$(tput setaf 6)"
+    C_VERSION_BEFORE_LABEL="$(tput setaf 6)"
+    C_VERSION_AFTER_LABEL="$(tput bold)$(tput setaf 6)"
     C_VERSION_BEFORE="$(tput bold)$(tput setaf 3)"
     C_VERSION_AFTER="$(tput bold)$(tput setaf 2)"
+    C_PATH="$(tput setaf 6)"
     C_RESULT="$(tput setaf 3)"
     C_LOG="$(tput dim)"
     C_APT_SOURCE="$(tput setaf 6)"
@@ -138,7 +144,8 @@ color_init() {
     C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""; C_INFO=""
     C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
     C_BRAND=""; C_ORANGE=""; C_NEON=""; C_UNIT=""; C_PACKAGE=""; C_PURPOSE=""
-    C_VERSION_LABEL=""; C_VERSION_BEFORE=""; C_VERSION_AFTER=""; C_RESULT=""; C_LOG=""
+    C_VERSION_LABEL=""; C_VERSION_BEFORE_LABEL=""; C_VERSION_AFTER_LABEL=""
+    C_VERSION_BEFORE=""; C_VERSION_AFTER=""; C_PATH=""; C_RESULT=""; C_LOG=""
     C_APT_SOURCE=""; C_APT_PROGRESS=""; C_BINARY=""
     C_PANEL=""
   fi
@@ -157,7 +164,7 @@ sleep_tick() {
 }
 
 scan_line() {
-  local label="$1" width="${2:-46}" i bar
+  local label="$1" width="${2:-69}" i bar
   if ! anim_enabled; then
     printf '%b>>%b %s\n' "$C_HEADER" "$C_RESET" "$label"
     return 0
@@ -238,9 +245,10 @@ banner() {
 }
 
 section() {
-  local label="$1"
+  local label="$1" heading
+  heading="$(printf '%s' "$label" | tr '[:lower:]' '[:upper:]')"
   printf '\n'
-  printf '%b── %s %b\n' "$C_FRAME" "$label" "$C_RESET"
+  printf '%b╾────%b %b%s%b %b────╼%b\n' "$C_FRAME" "$C_RESET" "$C_UNIT" "$heading" "$C_RESET" "$C_FRAME" "$C_RESET"
   scene_strip "$label"
 }
 
@@ -269,9 +277,9 @@ scene_strip() {
     *) manager="sys"; action="inspect" ;;
   esac
 
-  for ((i = 0; i <= 30; i += 3)); do
+  for ((i = 0; i <= 45; i += 3)); do
     fill="$(printf '%*s' "$i" '')"
-    empty="$(printf '%*s' "$((30 - i))" '')"
+    empty="$(printf '%*s' "$((45 - i))" '')"
     fill="${fill// /▓}"
     empty="${empty// /░}"
     printf '\r   %b%-9s%b [%b%s%s%b] %b%s%b' "$C_ORANGE" "$manager" "$C_RESET" "$C_NEON" "$fill" "$empty" "$C_RESET" "$C_TIP" "$action" "$C_RESET"
@@ -432,9 +440,37 @@ tool_card() {
 
   printf '   %b▌ %s%b\n' "$C_UNIT" "$heading" "$C_RESET"
   [ -n "$package" ] && printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "package" "$C_RESET" "$C_PACKAGE" "$package" "$C_RESET"
-  printf '   %b▶ VERSION BEFORE%b  %b%s%b\n' "$C_VERSION_LABEL" "$C_RESET" "$C_VERSION_BEFORE" "$version" "$C_RESET"
+  version_rows "version before" "$version" "$C_VERSION_BEFORE"
   printf '   %b%-15s%b %b%s%b\n' "$C_PURPOSE" "purpose" "$C_RESET" "$C_PURPOSE" "$desc" "$C_RESET"
   printf '\n'
+}
+
+version_rows() {
+  local label="$1" value="${2:-}" color="$3" label_color path rest
+  label_color="$C_VERSION_LABEL"
+  case "$label" in
+    "version before") label_color="$C_VERSION_BEFORE_LABEL" ;;
+    "version after") label_color="$C_VERSION_AFTER_LABEL" ;;
+  esac
+  [ -n "$value" ] || value="-"
+  case "$value" in
+    /*)
+      path="${value%% *}"
+      rest="${value#"$path"}"
+      rest="${rest# }"
+      [ -n "$rest" ] || rest="installed"
+      if [ "$label" = "version before" ]; then
+        printf '   %b%-15s%b %b%s%b\n' "$label_color" "$label" "$C_RESET" "$color" "$rest" "$C_RESET"
+        printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "path" "$C_RESET" "$C_PATH" "$path" "$C_RESET"
+      else
+        printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "path" "$C_RESET" "$C_PATH" "$path" "$C_RESET"
+        printf '   %b%-15s%b %b%s%b\n' "$label_color" "$label" "$C_RESET" "$color" "$rest" "$C_RESET"
+      fi
+      ;;
+    *)
+      printf '   %b%-15s%b %b%s%b\n' "$label_color" "$label" "$C_RESET" "$color" "$value" "$C_RESET"
+      ;;
+  esac
 }
 
 tool_version_after() {
@@ -446,7 +482,7 @@ tool_version_after() {
     FAIL) color="$C_BAD" ;;
     *) color="$C_VERSION_AFTER" ;;
   esac
-  printf '   %b▶ VERSION AFTER %b  %b%s%b\n' "$C_VERSION_LABEL" "$C_RESET" "$color" "$version" "$C_RESET"
+  version_rows "version after" "$version" "$color"
 }
 
 tool_result() {
@@ -668,10 +704,10 @@ track() {
   else
     status="OK"
   fi
+  tool_result "$status" "$note"
   if [ -n "$after" ]; then
     tool_version_after "$after" "$status"
   fi
-  tool_result "$status" "$note"
   _ua_stats+=("$status")
 }
 
@@ -707,10 +743,10 @@ report() {
   done
 
   banner "RECEIPT"
-  bar="${C_FRAME}$(printf '%.0s─' {1..92})${C_RESET}"
+  bar="${C_FRAME}$(printf '%.0s─' {1..88})${C_RESET}"
   printf '%b\n' "$bar"
-  printf '%b  update-all started%b  %s\n' "$C_HEADER" "$C_RESET" "$_ua_started_h"
-  printf '%b  update-all elapsed%b  %ss\n' "$C_HEADER" "$C_RESET" "$_ua_elapsed"
+  printf '  %b%-16s%b %s\n' "$C_HEADER" "started" "$C_RESET" "$_ua_started_h"
+  printf '  %b%-16s%b %ss\n' "$C_HEADER" "elapsed" "$C_RESET" "$_ua_elapsed"
   printf '%b  receipt summary%b    %b%s updated%b  %b%s ok%b  %b%s unchanged%b  %b%s skipped%b  %b%s failed%b\n' \
     "$C_HEADER" "$C_RESET" \
     "$C_OK" "$updated" "$C_RESET" \
@@ -719,7 +755,7 @@ report() {
     "$C_TIP" "$skipped" "$C_RESET" \
     "$C_BAD" "$failed" "$C_RESET"
   printf '%b\n' "$bar"
-  printf '%b  %-28s  %-10s  %-28s  %-28s%b\n' "$C_FRAME" "STEP" "RESULT" "BEFORE" "AFTER" "$C_RESET"
+  printf '  %bRUN DETAILS%b\n' "$C_HEADER" "$C_RESET"
   printf '%b\n' "$bar"
 
   for ((i = 0; i < ${#_ua_labels[@]}; i++)); do
@@ -741,9 +777,15 @@ report() {
 
     [ -n "$before" ] || before="-"
     [ -n "$after" ] || after="-"
-    printf '  %-28s  %b%s %-8s%b  %-28.28s  %-28.28s\n' "$lbl" "$color" "$icon" "$stat" "$C_RESET" "$before" "$after"
+    printf '  %b%s %-9s%b %b%s%b\n' "$color" "$icon" "$stat" "$C_RESET" "$C_HEADER" "$lbl" "$C_RESET"
+    if [ "$before" != "-" ]; then
+      printf '     %b%-8s%b %s\n' "$C_VERSION_BEFORE_LABEL" "before:" "$C_RESET" "$(receipt_value "$before")"
+    fi
+    if [ "$after" != "-" ]; then
+      printf '     %b%-8s%b %s\n' "$C_VERSION_AFTER_LABEL" "after:" "$C_RESET" "$(receipt_value "$after")"
+    fi
     if [ -n "$note" ]; then
-      printf '  %-28s  %-10s  %b%s%b\n' "" "" "$C_TIP" "$note" "$C_RESET"
+      printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$note"
     fi
   done
 
@@ -759,6 +801,17 @@ report() {
   else
     printf '%b✗  one or more steps failed - see FAIL rows above%b\n\n' "$C_BAD" "$C_RESET"
   fi
+}
+
+receipt_value() {
+  local value="$1" max="${2:-74}" left right
+  if [ "${#value}" -le "$max" ]; then
+    printf '%s' "$value"
+    return 0
+  fi
+  left=$(( (max - 3) / 2 ))
+  right=$(( max - 3 - left ))
+  printf '%s...%s' "${value:0:left}" "${value: -right}"
 }
 
 sudo_restore_traps() {

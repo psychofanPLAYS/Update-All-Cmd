@@ -26,10 +26,12 @@ update-all
 - Plain-English explanations before scary-looking package-manager output.
 - The original orange block `UPDATE ALL` intro.
 - Thin readable section titles with restrained amber motion.
+- 50% wider interactive progress strips for update sections.
 - A compact dark-teal binary divider under the opening art.
 - Color-coded streamed logs for warnings, failures, updates, removals, funding notices, and important package names.
 - Prominent package/tool cards with heavier package names and clear purpose notes before noisy updater output.
-- Loud `VERSION BEFORE` and `VERSION AFTER` rows where the tool can measure them.
+- Calmer path/version rows where the version value stands out without overpowering the card.
+- `version before` appears near the top of each package card, while `version after` closes the update section for quick comparison.
 - Pending update lists before supported upgrade steps, including old -> new versions where the package manager exposes them cleanly.
 - Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
 - Distinct apt colors for repository traffic versus summary lines such as `Fetched ...` and `Reading package lists...`.
@@ -67,20 +69,31 @@ It is also useful for experienced developers who want a quick workstation update
 ┃┗┫┣━┛┃┃┃
 ╹ ╹╹  ╹ ╹
 
-── codex
+╾──── CODEX ────╼
    ▌ OPENAI CODEX CLI
    package          @openai/codex@latest
-   ▶ VERSION BEFORE  /path/to/codex codex-cli 0.x
+   version before   codex-cli 0.x
+   path             /path/to/codex
    purpose          OpenAI local coding-agent CLI for reading code, editing files, running checks, and helping ship changes.
 
 $ npm install -g @openai/codex@latest --no-fund
-   ▶ VERSION AFTER   /path/to/codex codex-cli 0.x
    result           UNCHANGED
+   path             /path/to/codex
+   version after    codex-cli 0.x
 
-== RECEIPT ==
-receipt summary    0 updated  5 ok  13 unchanged  4 skipped  0 failed
-STEP                          RESULT      BEFORE                        AFTER
-codex                         = UNCHANGED  /path/to/codex 0.x            /path/to/codex 0.x
+┏━┓┏━╸┏━╸┏━╸╻┏━┓╺┳╸
+┣┳┛┣╸ ┃  ┣╸ ┃┣━┛ ┃
+╹┗╸┗━╸┗━╸┗━╸╹╹   ╹
+────────────────────────────────────────────────────────────────────────────────────────
+  started          2026-06-07 14:05:37 EDT
+  elapsed          12s
+  receipt summary    0 updated  5 ok  13 unchanged  4 skipped  0 failed
+────────────────────────────────────────────────────────────────────────────────────────
+  RUN DETAILS
+────────────────────────────────────────────────────────────────────────────────────────
+  = UNCHANGED codex
+     before:  /path/to/codex codex-cli 0.x
+     after:   /path/to/codex codex-cli 0.x
 ```
 
 The real run streams package-manager output live. Use `--no-anim` or `--no-color` when you want simpler logs.

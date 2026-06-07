@@ -21,18 +21,20 @@ symlinked at `/home/clawski/.local/bin/update-all`.
 - Orange `UPDATE ALL` title art.
 - Dark teal binary divider under the title.
 - Large section banners with optional animation.
+- Interactive section progress strips are 45 cells wide, up from the old 30-cell strip.
 - Prominent package/tool cards:
   - big uppercase unit title
   - bold package value
-  - loud `VERSION BEFORE`
-  - rust-orange `purpose`
-  - loud `VERSION AFTER` when measurable
+  - `version before` near the top, with a muted teal label and only the actual version value highlighted
+  - separate quieter `path` row when the version probe includes an executable path
+  - `version after` as the final outcome row after `result` and optional `note`, with a slightly brighter label than `version before`
+  - muted purpose text
   - visible `result` and optional `note`
 - Normal package-manager chatter is dimmed so logs stop becoming a wall of white.
 - Apt repository lines (`Hit:`, `Get:`, `Ign:`) and progress lines (`Fetched`,
   `Reading package lists`) use separate colors.
 - Missing tools still print cards and end as `SKIP` so beginners learn what they are.
-- Final section is `RECEIPT`, with counts and a before/after table.
+- Final section is `RECEIPT`, with counts and per-step `before:`, `after:`, and `note:` detail rows.
 
 ## Pending Update Lists
 

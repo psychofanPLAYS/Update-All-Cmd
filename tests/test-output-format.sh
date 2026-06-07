@@ -14,11 +14,22 @@ output="$("$UPDATE_ALL" --dry-run --no-anim --no-color)"
 printf '%s\n' "$output" | grep -F "OPENAI CODEX CLI" >/dev/null \
   || fail "expected prominent uppercase unit title for Codex"
 
-printf '%s\n' "$output" | grep -F "VERSION BEFORE" >/dev/null \
-  || fail "expected loud version before marker"
+printf '%s\n' "$output" | grep -F "version before" >/dev/null \
+  || fail "expected readable version before row"
 
-printf '%s\n' "$output" | grep -F "VERSION AFTER" >/dev/null \
-  || fail "expected loud version after marker"
+printf '%s\n' "$output" | grep -F "version after" >/dev/null \
+  || fail "expected readable version after row"
+
+printf '%s\n' "$output" | grep -F "path" >/dev/null \
+  || fail "expected executable path rows when version output includes a path"
+
+if printf '%s\n' "$output" | grep -F "version = " >/dev/null; then
+  fail "version rows should show the version value directly, without noisy prefixes"
+fi
+
+if printf '%s\n' "$output" | grep -F "VERSION BEFORE" >/dev/null; then
+  fail "version labels should not be shouty uppercase"
+fi
 
 printf '%s\n' "$output" | grep -F "purpose" >/dev/null \
   || fail "expected purpose label instead of does"
@@ -50,6 +61,19 @@ printf '%s\n' "$output" | grep -F "pending updates" >/dev/null \
 printf '%s\n' "$output" | grep -F "receipt summary" >/dev/null \
   || fail "expected final receipt summary"
 
+printf '%s\n' "$output" | grep -F "RUN DETAILS" >/dev/null \
+  || fail "expected professional receipt details section"
+
+printf '%s\n' "$output" | grep -F "before:" >/dev/null \
+  || fail "expected receipt before detail rows"
+
+printf '%s\n' "$output" | grep -F "after:" >/dev/null \
+  || fail "expected receipt after detail rows"
+
+if printf '%s\n' "$output" | grep -F "STEP                          RESULT      BEFORE" >/dev/null; then
+  fail "receipt should not use the cramped legacy table header"
+fi
+
 printf '%s\n' "$output" | grep -F "APT CLEANUP?" >/dev/null \
   || fail "expected large apt cleanup question near the end"
 
@@ -61,3 +85,15 @@ printf '%s\n' "$output" | grep -F "sudo apt-get autoclean" >/dev/null \
 
 printf '%s\n' "$output" | grep -F "sudo apt-get clean" >/dev/null \
   || fail "expected cleanup to run apt clean"
+
+awk '
+  /▌ NPM SELF-UPDATE/ { in_npm=1 }
+  in_npm && /version before/ { before=NR }
+  in_npm && /result/ { result=NR }
+  in_npm && /version after/ { after=NR; exit }
+  END {
+    if (!before || !result || !after || !(before < result && result < after)) {
+      exit 1
+    }
+  }
+' <<< "$output" || fail "expected npm self-update to show version before near the top and version after as the final outcome row"
