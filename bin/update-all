@@ -92,6 +92,17 @@ color_init() {
     C_LABEL="$(tput setaf 222)"
     C_FRAME="$(tput setaf 240)"
     C_ORANGE="$(tput bold)$(tput setaf 208)"
+    C_UNIT="$(tput bold)$(tput setaf 202)"
+    C_PACKAGE="$(tput bold)$(tput setaf 214)"
+    C_PURPOSE="$(tput setaf 166)"
+    C_VERSION_LABEL="$(tput bold)$(tput setaf 208)"
+    C_VERSION_BEFORE="$(tput bold)$(tput setaf 226)"
+    C_VERSION_AFTER="$(tput bold)$(tput setaf 46)"
+    C_RESULT="$(tput setaf 214)"
+    C_LOG="$(tput setaf 244)"
+    C_APT_SOURCE="$(tput setaf 67)"
+    C_APT_PROGRESS="$(tput setaf 215)"
+    C_BINARY="$(tput setaf 30)"
     C_BRAND="$C_ORANGE"
     C_NEON="$(tput bold)$(tput setaf 214)"
     C_PANEL="$(tput setaf 236)"
@@ -109,13 +120,26 @@ color_init() {
     C_LABEL="$(tput setaf 3)"
     C_FRAME="$(tput dim)"
     C_ORANGE="$(tput bold)$(tput setaf 3)"
+    C_UNIT="$C_ORANGE"
+    C_PACKAGE="$(tput bold)$(tput setaf 3)"
+    C_PURPOSE="$(tput setaf 1)"
+    C_VERSION_LABEL="$(tput bold)$(tput setaf 3)"
+    C_VERSION_BEFORE="$(tput bold)$(tput setaf 3)"
+    C_VERSION_AFTER="$(tput bold)$(tput setaf 2)"
+    C_RESULT="$(tput setaf 3)"
+    C_LOG="$(tput dim)"
+    C_APT_SOURCE="$(tput setaf 6)"
+    C_APT_PROGRESS="$(tput setaf 3)"
+    C_BINARY="$(tput setaf 6)"
     C_BRAND="$C_ORANGE"
     C_NEON="$(tput bold)$(tput setaf 3)"
     C_PANEL="$(tput dim)"
   else
     C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""; C_INFO=""
     C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
-    C_BRAND=""; C_ORANGE=""; C_NEON=""
+    C_BRAND=""; C_ORANGE=""; C_NEON=""; C_UNIT=""; C_PACKAGE=""; C_PURPOSE=""
+    C_VERSION_LABEL=""; C_VERSION_BEFORE=""; C_VERSION_AFTER=""; C_RESULT=""; C_LOG=""
+    C_APT_SOURCE=""; C_APT_PROGRESS=""; C_BINARY=""
     C_PANEL=""
   fi
 }
@@ -133,7 +157,7 @@ sleep_tick() {
 }
 
 scan_line() {
-  local label="$1" width="${2:-34}" i bar
+  local label="$1" width="${2:-46}" i bar
   if ! anim_enabled; then
     printf '%b>>%b %s\n' "$C_HEADER" "$C_RESET" "$label"
     return 0
@@ -164,9 +188,6 @@ title_spin() {
 }
 
 intro() {
-  local mode="LIVE"
-  [ "$UPDATE_ALL_DRY_RUN" = 0 ] || mode="DRY RUN"
-
   printf '\n'
   printf '%b ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗      █████╗ ██╗     ██╗     %b\n' "$C_ORANGE" "$C_RESET"
   printf '%b ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝     ██╔══██╗██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
@@ -174,15 +195,34 @@ intro() {
   printf '%b ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝       ██╔══██║██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
   printf '%b ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗%b\n' "$C_ORANGE" "$C_RESET"
   printf '%b  ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝%b\n' "$C_ORANGE" "$C_RESET"
-  printf '   %b%s%b      %s\n' "$C_HEADER" "mode" "$C_RESET" "$mode"
-  printf '   %b%s%b  %b01110101 01110000 01100100 01100001 01110100 01100101 00101101%b\n' "$C_HEADER" "callsign" "$C_RESET" "$C_TIP" "$C_RESET"
-  printf '             %b01100001 01101100 01101100%b\n' "$C_TIP" "$C_RESET"
+  printf '      %b01110101  01110000  01100100  01100001  01110100  01100101%b\n' "$C_BINARY" "$C_RESET"
+  printf '      %b00101101  01100001  01101100  01101100  00101101  00101110%b\n' "$C_BINARY" "$C_RESET"
   printf '\n'
   printf '%b▶  update-all%b\n' "$C_ORANGE" "$C_RESET"
 }
 
+banner_spin_3d() {
+  local label="$1" heading i frame
+  anim_enabled || return 0
+  heading="$(printf '%s' "$label" | tr '[:lower:]' '[:upper:]')"
+
+  for ((i = 0; i < 10; i++)); do
+    case "$((i % 5))" in
+      0) frame="╭──[ ${heading} ]──╮" ;;
+      1) frame="╱   ${heading}   ╲" ;;
+      2) frame="═╡  ${heading}  ╞═" ;;
+      3) frame="╲   ${heading}   ╱" ;;
+      *) frame="╰──[ ${heading} ]──╯" ;;
+    esac
+    printf '\r%b%s%b' "$C_UNIT" "$frame" "$C_RESET"
+    sleep_tick 0.045
+  done
+  printf '\r%*s\r' 80 ''
+}
+
 banner() {
   local label="$1"
+  banner_spin_3d "$label"
   printf '\n'
   if command -v figlet >/dev/null 2>&1 && figlet -f future "$label" 2>/dev/null | while IFS= read -r line; do
     printf '%b%s%b\n' "$C_HEADER" "$line" "$C_RESET"
@@ -229,10 +269,10 @@ scene_strip() {
     *) manager="sys"; action="inspect" ;;
   esac
 
-  for ((i = 0; i <= 18; i += 3)); do
+  for ((i = 0; i <= 30; i += 3)); do
     fill="$(printf '%*s' "$i" '')"
-    empty="$(printf '%*s' "$((18 - i))" '')"
-    fill="${fill// /▒}"
+    empty="$(printf '%*s' "$((30 - i))" '')"
+    fill="${fill// /▓}"
     empty="${empty// /░}"
     printf '\r   %b%-9s%b [%b%s%s%b] %b%s%b' "$C_ORANGE" "$manager" "$C_RESET" "$C_NEON" "$fill" "$empty" "$C_RESET" "$C_TIP" "$action" "$C_RESET"
     sleep_tick 0.035
@@ -313,6 +353,10 @@ color_log_stream() {
   local line lower
   while IFS= read -r line; do
     lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+    if [ -z "$line" ]; then
+      printf '\n'
+      continue
+    fi
     case "$lower" in
       *error*|*failed*|*fatal*|e:\ *|*cannot\ *|*not\ found*)
         printf '%b%s%b\n' "$C_BAD" "$line" "$C_RESET"
@@ -329,11 +373,20 @@ color_log_stream() {
       *fund*|*funding*|*donation*)
         printf '%b%s%b\n' "$C_TIP" "$line" "$C_RESET"
         ;;
+      preparing\ *@*\ for\ immediate\ activation*)
+        printf '%b%s%b\n' "$C_APT_PROGRESS" "$line" "$C_RESET"
+        ;;
       *@anthropic-ai/claude-code*|*@openai/codex*|*npm@*|*pnpm@*|*yarn@*)
         printf '%b%s%b\n' "$C_HEADER" "$line" "$C_RESET"
         ;;
+      fetched\ *|reading\ package\ lists*|building\ dependency\ tree*|reading\ state\ information*)
+        printf '%b%s%b\n' "$C_APT_PROGRESS" "$line" "$C_RESET"
+        ;;
+      hit:*|get:*|ign:*)
+        printf '%b%s%b\n' "$C_APT_SOURCE" "$line" "$C_RESET"
+        ;;
       *)
-        printf '%s\n' "$line"
+        printf '%b%s%b\n' "$C_LOG" "$line" "$C_RESET"
         ;;
     esac
   done
@@ -347,18 +400,18 @@ describe_tool() {
     flatpak) printf 'Sandboxed desktop app package system; updates installed Flatpak apps.' ;;
     node) printf 'JavaScript runtime used by npm, Codex, Claude Code, and many developer CLIs.' ;;
     corepack) printf 'Node-shipped package-manager shim that activates pnpm/yarn without manual installs.' ;;
-    pnpm) printf 'Fast, disk-space efficient JavaScript package manager. Source: npm registry package metadata.' ;;
-    yarn) printf 'Fast, reliable, secure JavaScript dependency management. Source: npm registry package metadata.' ;;
-    npm) printf 'JavaScript package manager used here for global CLI tools. Source: npm registry package metadata.' ;;
+    pnpm) printf 'Fast JavaScript package manager with a content-addressable store that saves disk space across projects.' ;;
+    yarn) printf 'JavaScript dependency manager used for project installs, workspaces, lock files, and reproducible package graphs.' ;;
+    npm) printf 'Default Node.js package manager; updates npm itself and globally installed JavaScript command-line tools.' ;;
     npm-globals) printf 'Updates globally installed npm CLIs already present on PATH.' ;;
-    claude) printf 'Anthropic terminal assistant for codebase work and command workflows. Source: npm registry metadata.' ;;
-    codex) printf 'OpenAI local coding-agent CLI. Source: npm registry package metadata.' ;;
+    claude) printf 'Anthropic terminal assistant for codebase work, shell workflows, and developer automation.' ;;
+    codex) printf 'OpenAI local coding-agent CLI for reading code, editing files, running checks, and helping ship changes.' ;;
     hermes) printf 'Skipped on purpose: active agent runtimes should not be surprise-upgraded mid-workflow.' ;;
     brew) printf 'Homebrew package manager for Linux/macOS developer tools and formulae.' ;;
     uv) printf 'Fast Python package and tool manager; upgraded by its owning package manager here.' ;;
     pipx) printf 'Installs and upgrades isolated Python CLI applications.' ;;
     rustup) printf 'Rust toolchain manager; updates rustc/cargo toolchains when installed.' ;;
-    gh) printf 'GitHub official command-line tool for PRs, issues, and repo workflows. Source: Ubuntu apt metadata.' ;;
+    gh) printf 'GitHub official command-line tool for pull requests, issues, repositories, auth, and extensions.' ;;
     cleanup) printf 'Removes unneeded apt packages and clears package cache after successful system updates.' ;;
     *) printf 'Updater step.' ;;
   esac
@@ -366,8 +419,9 @@ describe_tool() {
 
 tool_card() {
   local key="$1" title="$2" version="${3:-}" package="${4:-}"
-  local desc
+  local desc heading
   desc="$(describe_tool "$key")"
+  heading="$(printf '%s' "$title" | tr '[:lower:]' '[:upper:]')"
   [ -n "$version" ] || version="$(version_of "$key" 2>/dev/null || true)"
   if [ -z "$version" ]; then
     case "$key" in
@@ -376,10 +430,131 @@ tool_card() {
     esac
   fi
 
-  printf '   %b%-8s%b %b%s%b\n' "$C_LABEL" "unit" "$C_RESET" "$C_HEADER" "$title" "$C_RESET"
-  [ -n "$package" ] && printf '   %b%-8s%b %b%s%b\n' "$C_LABEL" "package" "$C_RESET" "$C_CMD" "$package" "$C_RESET"
-  printf '   %b%-8s%b %s\n' "$C_LABEL" "current" "$C_RESET" "$version"
-  printf '   %b%-8s%b %s\n' "$C_LABEL" "does" "$C_RESET" "$desc"
+  printf '   %b▌ %s%b\n' "$C_UNIT" "$heading" "$C_RESET"
+  [ -n "$package" ] && printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "package" "$C_RESET" "$C_PACKAGE" "$package" "$C_RESET"
+  printf '   %b▶ VERSION BEFORE%b  %b%s%b\n' "$C_VERSION_LABEL" "$C_RESET" "$C_VERSION_BEFORE" "$version" "$C_RESET"
+  printf '   %b%-15s%b %b%s%b\n' "$C_PURPOSE" "purpose" "$C_RESET" "$C_PURPOSE" "$desc" "$C_RESET"
+  printf '\n'
+}
+
+tool_version_after() {
+  local version="${1:-}" status="${2:-OK}" color
+  [ -n "$version" ] || version="-"
+  case "$status" in
+    UPDATED|OK) color="$C_VERSION_AFTER" ;;
+    UNCHANGED|SKIP) color="$C_VERSION_AFTER" ;;
+    FAIL) color="$C_BAD" ;;
+    *) color="$C_VERSION_AFTER" ;;
+  esac
+  printf '   %b▶ VERSION AFTER %b  %b%s%b\n' "$C_VERSION_LABEL" "$C_RESET" "$color" "$version" "$C_RESET"
+}
+
+tool_result() {
+  local status="$1" note="${2:-}" color
+  case "$status" in
+    UPDATED|OK) color="$C_OK" ;;
+    UNCHANGED|SKIP) color="$C_RESULT" ;;
+    FAIL) color="$C_BAD" ;;
+    *) color="$C_RESULT" ;;
+  esac
+  printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "result" "$C_RESET" "$color" "$status" "$C_RESET"
+  [ -z "$note" ] || printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "note" "$C_RESET" "$C_TIP" "$note" "$C_RESET"
+}
+
+pending_updates_begin() {
+  local source="$1"
+  printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "pending updates" "$C_RESET" "$C_HEADER" "$source" "$C_RESET"
+}
+
+pending_update_line() {
+  local name="$1" old="$2" new="$3"
+  printf '      %b%-30s%b %b%s%b %b->%b %b%s%b\n' \
+    "$C_CMD" "$name" "$C_RESET" \
+    "$C_VERSION_BEFORE" "$old" "$C_RESET" \
+    "$C_FRAME" "$C_RESET" \
+    "$C_VERSION_AFTER" "$new" "$C_RESET"
+}
+
+pending_update_note() {
+  printf '      %b%s%b\n' "$C_TIP" "$1" "$C_RESET"
+}
+
+cleanup_question() {
+  printf '\n'
+  if command -v figlet >/dev/null 2>&1; then
+    figlet -f future "APT CLEANUP?" 2>/dev/null | while IFS= read -r line; do
+      printf '%b%s%b\n' "$C_UNIT" "$line" "$C_RESET"
+    done
+  else
+    printf '%b%s%b\n' "$C_UNIT" "  ___  ___ _____   ___ _    ___   _   _  _ _   _ ___  ___" "$C_RESET"
+    printf '%b%s%b\n' "$C_UNIT" " / _ \\| _ \\_   _| / __| |  | __| /_\\ | \\| | | | | _ \\/ __|" "$C_RESET"
+    printf '%b%s%b\n' "$C_UNIT" "| (_) |  _/ | |  | (__| |__| _| / _ \\| .\\ | |_| |  _/\\__ \\" "$C_RESET"
+    printf '%b%s%b\n' "$C_UNIT" " \\___/|_|   |_|   \\___|____|___/_/ \\_\\_|\\_|\\___/|_|  |___/" "$C_RESET"
+  fi
+  printf '   %bAPT CLEANUP?%b\n' "$C_UNIT" "$C_RESET"
+  printf '   %bThis will run apt-owned cleanup only.%b\n' "$C_PURPOSE" "$C_RESET"
+  printf '   %bIt may purge packages apt marks as no longer needed and clear downloaded apt caches.%b\n' "$C_PURPOSE" "$C_RESET"
+  printf '   %bNothing outside apt is deleted here.%b\n\n' "$C_TIP" "$C_RESET"
+  printf '   %bAnswer y/N at the prompt below.%b\n\n' "$C_UNIT" "$C_RESET"
+}
+
+show_pending_apt_updates() {
+  local line pkg old new count=0
+  pending_updates_begin "apt list --upgradable"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in Listing*) continue ;; esac
+    pkg="${line%%/*}"
+    new="$(printf '%s\n' "$line" | awk '{print $2}')"
+    old="$(printf '%s\n' "$line" | sed -n 's/.*\[upgradable from: \([^]]*\)\].*/\1/p')"
+    [ -n "$pkg" ] || continue
+    [ -n "$new" ] || new="available"
+    [ -n "$old" ] || old="installed"
+    pending_update_line "$pkg" "$old" "$new"
+    count=$((count + 1))
+  done < <(apt list --upgradable 2>/dev/null || true)
+  [ "$count" -gt 0 ] || pending_update_note "none detected before this step"
+  printf '\n'
+}
+
+show_pending_npm_globals() {
+  local output line name current latest count=0
+  pending_updates_begin "npm outdated -g"
+  output="$(npm outdated -g --depth=0 2>/dev/null || true)"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in Package\ *|---*) continue ;; esac
+    name="$(printf '%s\n' "$line" | awk '{print $1}')"
+    current="$(printf '%s\n' "$line" | awk '{print $2}')"
+    latest="$(printf '%s\n' "$line" | awk '{print $4}')"
+    [ -n "$name" ] || continue
+    [ -n "$current" ] || current="installed"
+    [ -n "$latest" ] || latest="available"
+    pending_update_line "$name" "$current" "$latest"
+    count=$((count + 1))
+  done <<< "$output"
+  [ "$count" -gt 0 ] || pending_update_note "none detected before this step"
+  printf '\n'
+}
+
+show_pending_brew_updates() {
+  local output line name old new count=0
+  pending_updates_begin "brew outdated --verbose"
+  output="$(brew outdated --verbose 2>/dev/null || true)"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    name="$(printf '%s\n' "$line" | awk '{print $1}')"
+    old="$(printf '%s\n' "$line" | sed -n 's/^[^ ]* (\([^)]*\)).*/\1/p')"
+    new="$(printf '%s\n' "$line" | sed -n 's/.*< \(.*\)$/\1/p')"
+    if [ -n "$name" ] && [ -n "$old" ] && [ -n "$new" ]; then
+      pending_update_line "$name" "$old" "$new"
+    else
+      pending_update_note "$line"
+    fi
+    count=$((count + 1))
+  done <<< "$output"
+  [ "$count" -gt 0 ] || pending_update_note "none detected before this step"
+  printf '\n'
 }
 
 confirm_step() {
@@ -493,6 +668,10 @@ track() {
   else
     status="OK"
   fi
+  if [ -n "$after" ]; then
+    tool_version_after "$after" "$status"
+  fi
+  tool_result "$status" "$note"
   _ua_stats+=("$status")
 }
 
@@ -502,17 +681,43 @@ skip_step() {
   _ua_before+=("")
   _ua_after+=("")
   _ua_notes+=("${2:-not installed}")
+  tool_result "SKIP" "${2:-not installed}"
+}
+
+skip_tool() {
+  local key="$1" title="$2" label="$3" note="${4:-not installed}" package="${5:-$1}"
+  section "$label"
+  tool_card "$key" "$title" "" "$package"
+  skip_step "$label" "$note"
 }
 
 report() {
-  local bar i
+  local bar i updated=0 ok=0 unchanged=0 failed=0 skipped=0
   _ua_ended_s="$(date +%s)"
   _ua_elapsed=$(( _ua_ended_s - _ua_started_s ))
-  banner "REPORT"
+
+  for ((i = 0; i < ${#_ua_stats[@]}; i++)); do
+    case "${_ua_stats[$i]}" in
+      UPDATED) updated=$((updated + 1)) ;;
+      OK) ok=$((ok + 1)) ;;
+      UNCHANGED) unchanged=$((unchanged + 1)) ;;
+      FAIL) failed=$((failed + 1)) ;;
+      SKIP) skipped=$((skipped + 1)) ;;
+    esac
+  done
+
+  banner "RECEIPT"
   bar="${C_FRAME}$(printf '%.0s─' {1..92})${C_RESET}"
   printf '%b\n' "$bar"
   printf '%b  update-all started%b  %s\n' "$C_HEADER" "$C_RESET" "$_ua_started_h"
   printf '%b  update-all elapsed%b  %ss\n' "$C_HEADER" "$C_RESET" "$_ua_elapsed"
+  printf '%b  receipt summary%b    %b%s updated%b  %b%s ok%b  %b%s unchanged%b  %b%s skipped%b  %b%s failed%b\n' \
+    "$C_HEADER" "$C_RESET" \
+    "$C_OK" "$updated" "$C_RESET" \
+    "$C_OK" "$ok" "$C_RESET" \
+    "$C_RESULT" "$unchanged" "$C_RESET" \
+    "$C_TIP" "$skipped" "$C_RESET" \
+    "$C_BAD" "$failed" "$C_RESET"
   printf '%b\n' "$bar"
   printf '%b  %-28s  %-10s  %-28s  %-28s%b\n' "$C_FRAME" "STEP" "RESULT" "BEFORE" "AFTER" "$C_RESET"
   printf '%b\n' "$bar"
@@ -546,6 +751,7 @@ report() {
   printf '  %bactive npm%b   %s\n' "$C_HEADER" "$C_RESET" "$(version_of npm-active 2>/dev/null || printf 'not found')"
   printf '  %bbundled npm%b  %s\n' "$C_HEADER" "$C_RESET" "$(version_of npm-bundled 2>/dev/null || printf 'not found')"
   printf '  %bnpm fund%b     npm funding notices are optional donation links, not errors or bills.\n' "$C_HEADER" "$C_RESET"
+  printf '  %b%s%b        package purpose notes are plain-English guidance; registry/advisory lookups belong to Safety Coach Mode.\n' "$C_HEADER" "notes" "$C_RESET"
   printf '%b\n\n' "$bar"
 
   if [ "$rc" -eq 0 ]; then
@@ -631,6 +837,7 @@ run_updates() {
   before="$(version_of apt-upgradable 2>/dev/null || true)"
   section "apt upgrade"
   tool_card "apt" "apt package upgrade" "$before"
+  show_pending_apt_updates
   sudo_cmd apt-get -o Dpkg::Options::=--force-confold upgrade -y
   after="$(version_of apt-upgradable 2>/dev/null || true)"
   track "apt upgrade" $? "$before" "$after"
@@ -643,7 +850,7 @@ run_updates() {
     after="$(version_of snap 2>/dev/null || true)"
     track "snap refresh" $? "$before" "$after"
   else
-    skip_step "snap refresh" "snap command not installed"
+    skip_tool "snap" "snap packages" "snap refresh" "snap command not installed" "snap"
   fi
 
   if command -v flatpak >/dev/null 2>&1; then
@@ -654,7 +861,7 @@ run_updates() {
     after="$(version_of flatpak 2>/dev/null || true)"
     track "flatpak update" $? "$before" "$after"
   else
-    skip_step "flatpak update" "flatpak command not installed"
+    skip_tool "flatpak" "flatpak apps" "flatpak update" "flatpak command not installed" "flatpak"
   fi
 
   banner "NODE"
@@ -666,7 +873,7 @@ run_updates() {
     after="$(version_of node 2>/dev/null || true)"
     track "node runtime" $? "$before" "$after" "update-node keeps Node inside the current major line"
   else
-    skip_step "node runtime" "update-node command not installed"
+    skip_tool "node" "Node.js runtime" "node runtime" "update-node command not installed" "node"
   fi
 
   if command -v corepack >/dev/null 2>&1; then
@@ -694,7 +901,7 @@ run_updates() {
       after="$(version_of pnpm 2>/dev/null || true)"
       track "pnpm (corepack)" $? "$before" "$after" "bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)"
     else
-      skip_step "pnpm (corepack)" "pnpm is not activated/installed"
+      skip_tool "pnpm" "pnpm package manager" "pnpm self-update" "pnpm is not activated/installed" "pnpm@latest"
     fi
 
     if command -v yarn >/dev/null 2>&1; then
@@ -709,12 +916,12 @@ run_updates() {
       after="$(version_of yarn 2>/dev/null || true)"
       track "yarn (corepack)" $? "$before" "$after" "bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)"
     else
-      skip_step "yarn (corepack)" "yarn is not activated/installed"
+      skip_tool "yarn" "Yarn package manager" "yarn self-update" "yarn is not activated/installed" "yarn@stable"
     fi
   else
-    skip_step "corepack enable" "corepack command not installed"
-    skip_step "pnpm (corepack)" "corepack command not installed"
-    skip_step "yarn (corepack)" "corepack command not installed"
+    skip_tool "corepack" "Corepack shims" "corepack enable" "corepack command not installed" "corepack"
+    skip_tool "pnpm" "pnpm package manager" "pnpm self-update" "corepack command not installed" "pnpm@latest"
+    skip_tool "yarn" "Yarn package manager" "yarn self-update" "corepack command not installed" "yarn@stable"
   fi
 
   banner "NPM"
@@ -724,10 +931,11 @@ run_updates() {
     tool_card "npm" "npm self-update" "$before" "npm@latest"
     run_cmd npm install -g npm@latest --no-fund
     after="$(version_of npm-active 2>/dev/null || true)"
-    track "npm self-update" $? "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in REPORT"
+    track "npm self-update" $? "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in RECEIPT"
 
     section "npm globals"
     tool_card "npm-globals" "npm global packages"
+    show_pending_npm_globals
     run_cmd npm update -g --no-fund
     track "npm globals" $?
 
@@ -745,13 +953,13 @@ run_updates() {
     after="$(version_of codex 2>/dev/null || true)"
     track "codex" $? "$before" "$after"
 
-    skip_step "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows"
+    skip_tool "hermes" "Hermes Agent" "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows" "hermes-agent"
   else
-    skip_step "npm self-update" "npm command not installed"
-    skip_step "npm globals" "npm command not installed"
-    skip_step "claude code" "npm command not installed"
-    skip_step "codex" "npm command not installed"
-    skip_step "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows"
+    skip_tool "npm" "npm self-update" "npm self-update" "npm command not installed" "npm@latest"
+    skip_tool "npm-globals" "npm global packages" "npm globals" "npm command not installed" "npm"
+    skip_tool "claude" "Claude Code CLI" "claude code" "npm command not installed" "@anthropic-ai/claude-code@latest"
+    skip_tool "codex" "OpenAI Codex CLI" "codex" "npm command not installed" "@openai/codex@latest"
+    skip_tool "hermes" "Hermes Agent" "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows" "hermes-agent"
   fi
 
   banner "TOOLS"
@@ -759,11 +967,12 @@ run_updates() {
     before="$(version_of brew 2>/dev/null || true)"
     section "brew update + upgrade"
     tool_card "brew" "Homebrew formulae" "$before"
+    show_pending_brew_updates
     run_shell 'brew update && brew upgrade'
     after="$(version_of brew 2>/dev/null || true)"
     track "brew upgrade" $? "$before" "$after" "Homebrew updates itself and brew-managed formulae"
   else
-    skip_step "brew upgrade" "brew command not installed"
+    skip_tool "brew" "Homebrew formulae" "brew upgrade" "brew command not installed" "brew"
   fi
 
   if command -v uv >/dev/null 2>&1; then
@@ -787,8 +996,8 @@ run_updates() {
     run_cmd uv tool upgrade --all
     track "uv tool upgrade" $?
   else
-    skip_step "uv self update" "uv command not installed"
-    skip_step "uv tool upgrade" "uv command not installed"
+    skip_tool "uv" "uv Python toolchain" "uv self update" "uv command not installed" "uv"
+    skip_tool "uv" "uv-installed tools" "uv tool upgrade" "uv command not installed" "uv tool upgrade --all"
   fi
 
   if command -v pipx >/dev/null 2>&1; then
@@ -799,7 +1008,7 @@ run_updates() {
     after="$(version_of pipx 2>/dev/null || true)"
     track "pipx upgrade-all" $? "$before" "$after"
   else
-    skip_step "pipx upgrade-all" "pipx command not installed"
+    skip_tool "pipx" "pipx Python CLIs" "pipx upgrade-all" "pipx command not installed" "pipx"
   fi
 
   if command -v rustup >/dev/null 2>&1; then
@@ -814,8 +1023,8 @@ run_updates() {
     after="$(version_of cargo 2>/dev/null || true)"
     track "cargo version" 0 "$before" "$after" "cargo is updated through rustup toolchains"
   else
-    skip_step "rustup update" "rustup command not installed"
-    skip_step "cargo version" "rustup command not installed"
+    skip_tool "rustup" "Rust toolchains" "rustup update" "rustup command not installed" "rustup"
+    skip_tool "rustup" "cargo version" "cargo version" "rustup command not installed" "cargo"
   fi
 
   if command -v gh >/dev/null 2>&1; then
@@ -826,21 +1035,24 @@ run_updates() {
     after="$(version_of gh 2>/dev/null || true)"
     track "gh extensions" $? "$before" "$after"
   else
-    skip_step "gh extensions" "gh command not installed"
+    skip_tool "gh" "GitHub CLI extensions" "gh extensions" "gh command not installed" "gh"
   fi
 
   banner "CLEANUP"
   section "apt autoremove + clean"
   tool_card "cleanup" "apt cleanup"
-  if confirm_step "Run apt autoremove and apt clean now? This can remove packages apt says are no longer needed."; then
-    sudo_cmd apt-get autoremove -y
+  cleanup_question
+  if confirm_step "Run apt cleanup now? This can purge packages apt says are no longer needed and clear apt caches."; then
+    sudo_cmd apt-get autoremove --purge -y
     local clean_a=$?
-    sudo_cmd apt-get clean
+    sudo_cmd apt-get autoclean
     local clean_b=$?
-    if [ "$clean_a" -eq 0 ] && [ "$clean_b" -eq 0 ]; then
+    sudo_cmd apt-get clean
+    local clean_c=$?
+    if [ "$clean_a" -eq 0 ] && [ "$clean_b" -eq 0 ] && [ "$clean_c" -eq 0 ]; then
       track "apt autoremove" 0
     else
-      track "apt autoremove" 1 "" "" "autoremove exit=$clean_a, clean exit=$clean_b"
+      track "apt autoremove" 1 "" "" "autoremove exit=$clean_a, autoclean exit=$clean_b, clean exit=$clean_c"
     fi
   else
     skip_step "apt autoremove" "skipped by user; no packages removed or cache cleaned"

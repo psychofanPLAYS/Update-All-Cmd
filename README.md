@@ -26,10 +26,15 @@ update-all
 - Plain-English explanations before scary-looking package-manager output.
 - The original orange block `UPDATE ALL` intro.
 - Thin readable section titles with restrained amber motion.
-- A compact binary callsign under the opening art.
+- A compact dark-teal binary divider under the opening art.
 - Color-coded streamed logs for warnings, failures, updates, removals, funding notices, and important package names.
-- Short package/tool notes before noisy updater output.
-- Before/after tracking and a final report.
+- Prominent package/tool cards with heavier package names and clear purpose notes before noisy updater output.
+- Loud `VERSION BEFORE` and `VERSION AFTER` rows where the tool can measure them.
+- Pending update lists before supported upgrade steps, including old -> new versions where the package manager exposes them cleanly.
+- Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
+- Distinct apt colors for repository traffic versus summary lines such as `Fetched ...` and `Reading package lists...`.
+- Before/after tracking and a final receipt summary.
+- One receipt-level note explains metadata/source limits, instead of repeating source text on every package card.
 - Quiet modes for logs, scripts, accessibility, and plain terminals.
 - Public-safe configuration: no passwords, tokens, or private machine values stored in the repo.
 
@@ -53,6 +58,8 @@ It is also useful for experienced developers who want a quick workstation update
  ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝       ██╔══██║██║     ██║
  ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗
   ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝
+      01110101  01110000  01100100  01100001  01110100  01100101
+      00101101  01100001  01101100  01101100  00101101  00101110
 
 ▶  update-all
 
@@ -61,12 +68,17 @@ It is also useful for experienced developers who want a quick workstation update
 ╹ ╹╹  ╹ ╹
 
 ── codex
-   unit     OpenAI Codex CLI
-   package  @openai/codex@latest
-   current  /path/to/codex codex-cli 0.x
-   does     OpenAI local coding-agent CLI. Source: npm registry package metadata.
+   ▌ OPENAI CODEX CLI
+   package          @openai/codex@latest
+   ▶ VERSION BEFORE  /path/to/codex codex-cli 0.x
+   purpose          OpenAI local coding-agent CLI for reading code, editing files, running checks, and helping ship changes.
 
-== REPORT ==
+$ npm install -g @openai/codex@latest --no-fund
+   ▶ VERSION AFTER   /path/to/codex codex-cli 0.x
+   result           UNCHANGED
+
+== RECEIPT ==
+receipt summary    0 updated  5 ok  13 unchanged  4 skipped  0 failed
 STEP                          RESULT      BEFORE                        AFTER
 codex                         = UNCHANGED  /path/to/codex 0.x            /path/to/codex 0.x
 ```
@@ -103,7 +115,7 @@ update-all [options]
 | Option | What it does |
 | --- | --- |
 | `--dry-run` | Prints the update commands and report path without intentionally applying updates. |
-| `--no-anim` | Disables animated intro/scanner effects. |
+| `--no-anim` | Disables animated header/scanner effects. |
 | `--no-color` | Disables ANSI color output. |
 | `-h`, `--help` | Shows command help. |
 
@@ -126,6 +138,16 @@ update-all --dry-run --no-anim --no-color
 ## Supported Update Surfaces
 
 Missing tools are reported as `SKIP`, not treated as fatal.
+
+Current pending-update list support:
+
+| Tool | Pending list source |
+| --- | --- |
+| `apt` | `apt list --upgradable`, parsed as package old -> new |
+| `npm globals` | `npm outdated -g`, parsed as package current -> latest |
+| Homebrew/Linuxbrew | `brew outdated --verbose`, parsed where Homebrew output includes old/new |
+
+Other package managers still stream their native update output and are tracked in the final receipt. Broader registry-backed package discovery belongs to planned Safety Coach Mode.
 
 | Tool | Area |
 | --- | --- |
@@ -183,6 +205,7 @@ Keep secret values out of shell history, committed files, screenshots, and logs.
 - No tokens, API keys, or passwords stored in this repository.
 - No replacement for first-party package managers; it calls them.
 - Cleanup/removal steps ask first in live mode and skip if the terminal is not interactive.
+- Apt cleanup uses apt-owned cleanup only: `apt-get autoremove --purge -y`, `apt-get autoclean`, and `apt-get clean`.
 - `Hermes Agent` is intentionally skipped to avoid surprise-upgrading active agent workflows.
 - Best for personal developer workstations, not production servers.
 
@@ -195,12 +218,15 @@ This is the next big direction for the project.
 The goal is not "delete scary things automatically." The goal is:
 
 1. Detect tools and package managers you have installed.
-2. Explain what each one is in plain language.
-3. Flag packages that are deprecated, removed from their registry, failing audits, or otherwise suspicious.
-4. Ask before touching special stacks such as OpenClaw, Hermes, or other agent runtimes.
-5. Ask again before removing anything.
-6. Show the exact command it is about to run.
-7. Leave a receipt so you can learn from what happened.
+2. Pull package descriptions from trusted package-manager or registry metadata instead of hardcoding every package explanation.
+3. Explain what each package is in plain language.
+4. Flag packages that are deprecated, removed from their registry, reported malicious by trusted vulnerability databases, failing audits, or otherwise suspicious.
+5. Ask before touching special stacks such as OpenClaw, Hermes, or other agent runtimes.
+6. Ask again before removing anything.
+7. Show the exact command it is about to run.
+8. Leave a receipt so you can learn from what happened.
+
+Safety Coach Mode should use first-party or well-known security sources where possible, such as package-manager metadata, registry deprecation flags, audit commands, and vulnerability databases such as OSV. It should never auto-remove a package just because a warning appeared.
 
 Planned examples:
 
@@ -213,7 +239,7 @@ Do you want update-all to check it, skip it, or leave it alone forever?
 ```text
 Package flagged:
 left-pad-example
-Reason: package is deprecated or missing from registry metadata.
+Reason: package is deprecated, missing from registry metadata, or reported by a trusted advisory source.
 Recommended action: review first. Do not auto-remove.
 ```
 
@@ -247,6 +273,8 @@ npm install -g cspell@latest --no-fund
 |-- cspell.json
 |-- install.sh
 |-- LICENSE
+|-- tests/
+|   `-- test-output-format.sh
 `-- README.md
 ```
 
