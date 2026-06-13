@@ -21,6 +21,7 @@
     "bactive",
     "bbundled",
     "bnpm",
+    "camoufox",
     "confold",
     "elif",
     "esac",
@@ -37,6 +38,12 @@
     "PIPESTATUS",
     "pipx",
     "pnpm",
+    "PUNCT",
+    "punct",
+    "pycache",
+    "pytest",
+    "journalctl",
+    "rebuildable",
     "rustc",
     "rustup",
     "Sandboxed",
@@ -46,7 +53,9 @@
     "tput",
     "toolchain",
     "upgradable",
+    "virtualenvs",
     "vulnerab",
-    "workflows"
+    "workflows",
+    "xdev"
   ]
 }

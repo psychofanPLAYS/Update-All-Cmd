@@ -2,3 +2,39 @@
 *.log
 tmp/
 .tmp/
+
+# --- gitignore-sync managed (do not edit below) ---
+# macOS junk
+._*
+# editor
+*.swp
+*~
+.idea/
+.vscode/
+# python
+.venv/
+**/.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# node
+node_modules/
+# secrets
+*.env
+.env
+*.key
+*.pem
+*.p12
+SECRETS.md
+credentials*.json
+# heavy/runtime
+*.db
+*.sqlite
+*.sqlite3
+*.tar.gz
+cache/

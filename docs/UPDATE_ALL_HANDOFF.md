@@ -18,10 +18,11 @@ symlinked at `/home/clawski/.local/bin/update-all`.
 
 ## Current UX Contract
 
-- Orange `UPDATE ALL` title art.
+- Intro title art uses the current two-line binary divider (`update` on top, centered `all`), with no old plain-text `UPDATE ALL` line.
 - Dark teal binary divider under the title.
 - Large section banners with optional animation.
-- Interactive section progress strips are 45 cells wide, up from the old 30-cell strip.
+- Interactive section progress strips are 45 cells wide, up from the old 30-cell strip, and stay on the amber/orange brand color.
+- Section headers include one blank line above and one blank line below the divider so each step has readable spacing while keeping the loading strip close.
 - Prominent package/tool cards:
   - big uppercase unit title
   - bold package value
@@ -35,6 +36,7 @@ symlinked at `/home/clawski/.local/bin/update-all`.
   `Reading package lists`) use separate colors.
 - Missing tools still print cards and end as `SKIP` so beginners learn what they are.
 - Final section is `RECEIPT`, with counts and per-step `before:`, `after:`, and `note:` detail rows.
+- Claude Code and Codex use their first-party updaters (`claude update`, `codex update`) instead of relying on npm install to refresh the active binaries.
 
 ## Pending Update Lists
 
@@ -51,7 +53,9 @@ Not yet implemented:
 
 ## Cleanup Behavior
 
-Cleanup is intentionally apt-owned only and gated by a large `APT CLEANUP?` prompt.
+Cleanup is split into two explicit prompts. Removal stays opt-in and visible.
+
+The first prompt is apt-owned only and gated by a large `APT CLEANUP?` prompt.
 When the user answers yes, it runs:
 
 ```bash
@@ -60,7 +64,22 @@ sudo apt-get autoclean
 sudo apt-get clean
 ```
 
-Do not add random cache deletion without a separate prompt and rollback story.
+The second prompt is `WORKSTATION CACHE CLEANUP?`. When the user answers yes, it removes only rebuildable caches and old update leftovers:
+
+```bash
+npm cache clean --force
+rm -rf ~/.npm/_npx
+pip3 cache purge
+brew cleanup -s
+timeout 20s uv cache prune
+rm -rf selected ~/.cache tool/browser-automation caches
+find ~ -xdev -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -exec rm -rf -- {} +
+rm -rf ~/.codex/.tmp/plugins ~/.codex/.tmp/plugins.sha
+sudo remove disabled snap revisions
+sudo journalctl --vacuum-size=512M
+```
+
+Do not delete archives, models, databases, project data, installed runtimes, or active virtualenvs from this cleanup path.
 
 ## Safety Coach Scope
 

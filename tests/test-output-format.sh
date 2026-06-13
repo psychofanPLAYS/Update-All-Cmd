@@ -14,6 +14,20 @@ output="$("$UPDATE_ALL" --dry-run --no-anim --no-color)"
 printf '%s\n' "$output" | grep -F "OPENAI CODEX CLI" >/dev/null \
   || fail "expected prominent uppercase unit title for Codex"
 
+printf '%s\n' "$output" | grep -F "claude update" >/dev/null \
+  || fail "expected Claude Code to use its first-party updater"
+
+printf '%s\n' "$output" | grep -F "codex update" >/dev/null \
+  || fail "expected Codex CLI to use its first-party updater"
+
+if printf '%s\n' "$output" | grep -F "npm install -g @anthropic-ai/claude-code@latest" >/dev/null; then
+  fail "Claude Code should not be updated through npm install"
+fi
+
+if printf '%s\n' "$output" | grep -F "npm install -g @openai/codex@latest" >/dev/null; then
+  fail "Codex CLI should not be updated through npm install"
+fi
+
 printf '%s\n' "$output" | grep -F "version before" >/dev/null \
   || fail "expected readable version before row"
 
@@ -46,6 +60,10 @@ printf '%s\n' "$output" | grep -F "result" >/dev/null \
 
 if printf '%s\n' "$output" | grep -F "mode" >/dev/null; then
   fail "intro should not contain the old mode metadata line"
+fi
+
+if printf '%s\n' "$output" | grep -E "^[[:space:]]*UPDATE ALL$" >/dev/null; then
+  fail "removed the old non-ascii UPDATE ALL banner header"
 fi
 
 if printf '%s\n' "$output" | grep -F "callsign" >/dev/null; then
@@ -86,6 +104,21 @@ printf '%s\n' "$output" | grep -F "sudo apt-get autoclean" >/dev/null \
 printf '%s\n' "$output" | grep -F "sudo apt-get clean" >/dev/null \
   || fail "expected cleanup to run apt clean"
 
+printf '%s\n' "$output" | grep -F "WORKSTATION CACHE CLEANUP?" >/dev/null \
+  || fail "expected broader workstation cache cleanup prompt"
+
+printf '%s\n' "$output" | grep -F "npm cache clean --force" >/dev/null \
+  || fail "expected npm cache cleanup in dry-run"
+
+printf '%s\n' "$output" | grep -F "timeout 20s uv cache prune" >/dev/null \
+  || fail "expected bounded uv cache prune in dry-run"
+
+printf '%s\n' "$output" | grep -F "disabled snap revisions" >/dev/null \
+  || fail "expected disabled snap revision cleanup in dry-run"
+
+printf '%s\n' "$output" | grep -F "journalctl --vacuum-size=512M" >/dev/null \
+  || fail "expected journal vacuum in dry-run"
+
 awk '
   /▌ NPM SELF-UPDATE/ { in_npm=1 }
   in_npm && /version before/ { before=NR }
@@ -97,3 +130,25 @@ awk '
     }
   }
 ' <<< "$output" || fail "expected npm self-update to show version before near the top and version after as the final outcome row"
+
+awk '
+  /^╾──── / {
+    expecting_card=1
+    blank_gap=0
+    next
+  }
+  expecting_card {
+    if ($0 == "") {
+      blank_gap++
+      next
+    }
+    if ($0 ~ /^   ▌ /) {
+      if (blank_gap < 1) {
+        exit 1
+      }
+      expecting_card=0
+      next
+    }
+    expecting_card=0
+  }
+' <<< "$output" || fail "expected section headers to keep spacing before section card output"

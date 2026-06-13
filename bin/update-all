@@ -93,7 +93,7 @@ color_init() {
     C_FRAME="$(tput setaf 240)"
     C_ORANGE="$(tput bold)$(tput setaf 214)"
     C_UNIT="$(tput bold)$(tput setaf 215)"
-    C_PACKAGE="$(tput bold)$(tput setaf 222)"
+    C_NEON="$C_ORANGE"
     C_PURPOSE="$(tput setaf 109)"
     C_VERSION_LABEL="$(tput setaf 250)"
     C_VERSION_BEFORE_LABEL="$(tput setaf 66)"
@@ -106,8 +106,9 @@ color_init() {
     C_APT_SOURCE="$(tput setaf 67)"
     C_APT_PROGRESS="$(tput setaf 215)"
     C_BINARY="$(tput setaf 30)"
+    C_CLEANUP_WORD="$(tput setaf 230)"
+    C_CLEANUP_PUNCT="$(tput setaf 223)"
     C_BRAND="$C_ORANGE"
-    C_NEON="$(tput bold)$(tput setaf 214)"
     C_PANEL="$(tput setaf 236)"
   elif [ "${ncolors:-0}" -ge 8 ]; then
     C_RESET="$(tput sgr0)"
@@ -124,7 +125,7 @@ color_init() {
     C_FRAME="$(tput dim)"
     C_ORANGE="$(tput bold)$(tput setaf 3)"
     C_UNIT="$C_ORANGE"
-    C_PACKAGE="$(tput bold)$(tput setaf 3)"
+    C_NEON="$C_ORANGE"
     C_PURPOSE="$(tput setaf 6)"
     C_VERSION_LABEL="$(tput bold)$(tput setaf 6)"
     C_VERSION_BEFORE_LABEL="$(tput setaf 6)"
@@ -132,21 +133,24 @@ color_init() {
     C_VERSION_BEFORE="$(tput bold)$(tput setaf 3)"
     C_VERSION_AFTER="$(tput bold)$(tput setaf 2)"
     C_PATH="$(tput setaf 6)"
-    C_RESULT="$(tput setaf 3)"
+    C_RESULT="$(tput setaf 5)"
     C_LOG="$(tput dim)"
     C_APT_SOURCE="$(tput setaf 6)"
     C_APT_PROGRESS="$(tput setaf 3)"
     C_BINARY="$(tput setaf 6)"
+    C_CLEANUP_WORD="$(tput setaf 3)"
+    C_CLEANUP_PUNCT="$(tput dim)$(tput setaf 3)"
     C_BRAND="$C_ORANGE"
-    C_NEON="$(tput bold)$(tput setaf 3)"
     C_PANEL="$(tput dim)"
   else
     C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""; C_INFO=""
     C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
-    C_BRAND=""; C_ORANGE=""; C_NEON=""; C_UNIT=""; C_PACKAGE=""; C_PURPOSE=""
+    C_BRAND=""; C_ORANGE=""; C_NEON=""; C_UNIT=""; C_PURPOSE=""
     C_VERSION_LABEL=""; C_VERSION_BEFORE_LABEL=""; C_VERSION_AFTER_LABEL=""
     C_VERSION_BEFORE=""; C_VERSION_AFTER=""; C_PATH=""; C_RESULT=""; C_LOG=""
     C_APT_SOURCE=""; C_APT_PROGRESS=""; C_BINARY=""
+    C_CLEANUP_WORD=""
+    C_CLEANUP_PUNCT=""
     C_PANEL=""
   fi
 }
@@ -195,6 +199,8 @@ title_spin() {
 }
 
 intro() {
+  local update_binary all_binary divider_padding
+
   printf '\n'
   printf '%b ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗      █████╗ ██╗     ██╗     %b\n' "$C_ORANGE" "$C_RESET"
   printf '%b ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝     ██╔══██╗██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
@@ -202,10 +208,14 @@ intro() {
   printf '%b ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝       ██╔══██║██║     ██║     %b\n' "$C_ORANGE" "$C_RESET"
   printf '%b ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗%b\n' "$C_ORANGE" "$C_RESET"
   printf '%b  ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝%b\n' "$C_ORANGE" "$C_RESET"
-  printf '      %b01110101  01110000  01100100  01100001  01110100  01100101%b\n' "$C_BINARY" "$C_RESET"
-  printf '      %b00101101  01100001  01101100  01101100  00101101  00101110%b\n' "$C_BINARY" "$C_RESET"
+
+  update_binary='01110101  01110000  01100100  01100001  01110100  01100101'
+  all_binary='01100001  01101100  01101100'
+  divider_padding=$(( (${#update_binary} - ${#all_binary}) / 2 ))
+
+  printf '      %b%s%b\n' "$C_BINARY" "$update_binary" "$C_RESET"
+  printf '%*s%b%s%b\n' "$((6 + divider_padding))" '' "$C_BINARY" "$all_binary" "$C_RESET"
   printf '\n'
-  printf '%b▶  update-all%b\n' "$C_ORANGE" "$C_RESET"
 }
 
 banner_spin_3d() {
@@ -244,11 +254,77 @@ banner() {
   fi
 }
 
+styled_package_name() {
+  local name="$1" width="${2:-0}" color
+  color="$(styled_package_color "$name")"
+
+  if [ "${width:-0}" -gt 0 ]; then
+    printf '%b%-*s%b' "$color" "$width" "$name" "$C_RESET"
+  else
+    printf '%b%s%b' "$color" "$name" "$C_RESET"
+  fi
+}
+
+package_color_hash() {
+  local key="$1" i char len hash=0
+  len="${#key}"
+  for ((i = 0; i < len; i++)); do
+    char="$(printf '%d' "'${key:i:1}")"
+    hash=$(( (hash * 33 + char) & 0x7fffffff ))
+  done
+  printf '%s' "$((hash % 7))"
+}
+
+styled_package_color() {
+  local style_key
+  style_key="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+  case "$style_key" in
+    apt)
+      printf '%s' "$C_ORANGE" ;;
+    brew)
+      printf '%s' "$C_NEON" ;;
+    node)
+      printf '%s' "$C_PATH" ;;
+    *npm*)
+      printf '%s' "$C_VERSION_AFTER" ;;
+    corepack)
+      printf '%s' "$C_APT_PROGRESS" ;;
+    pnpm)
+      printf '%s' "$C_RESULT" ;;
+    yarn)
+      printf '%s' "$C_PURPOSE" ;;
+    uv)
+      printf '%s' "$C_LABEL" ;;
+    pipx)
+      printf '%s' "$C_APT_PROGRESS" ;;
+    rustup|cargo)
+      printf '%s' "$C_RESULT" ;;
+    gh)
+      printf '%s' "$C_WARN" ;;
+    dpkg|snap|flatpak|codex|claude)
+      printf '%s' "$C_VERSION_BEFORE" ;;
+    cleanup|cache|trash) printf '%s' "$C_CLEANUP_WORD" ;;
+    *)
+      case "$(package_color_hash "$style_key")" in
+        0) printf '%s' "$C_VERSION_LABEL" ;;
+        1) printf '%s' "$C_PURPOSE" ;;
+        2) printf '%s' "$C_PATH" ;;
+        3) printf '%s' "$C_RESULT" ;;
+        4) printf '%s' "$C_APT_PROGRESS" ;;
+        5) printf '%s' "$C_NEON" ;;
+        *) printf '%s' "$C_WARN" ;;
+      esac
+      ;;
+  esac
+}
+
 section() {
   local label="$1" heading
   heading="$(printf '%s' "$label" | tr '[:lower:]' '[:upper:]')"
   printf '\n'
   printf '%b╾────%b %b%s%b %b────╼%b\n' "$C_FRAME" "$C_RESET" "$C_UNIT" "$heading" "$C_RESET" "$C_FRAME" "$C_RESET"
+  printf '\n'
   scene_strip "$label"
 }
 
@@ -273,6 +349,7 @@ scene_strip() {
     *pipx*) manager="pipx"; action="isolated CLIs" ;;
     *rustup*) manager="rustup"; action="toolchains" ;;
     *gh*) manager="gh"; action="extensions" ;;
+    *workstation*cleanup*|*cache*cleanup*) manager="cache"; action="safe cache sweep" ;;
     *clean*) manager="apt"; action="cleanup gate" ;;
     *) manager="sys"; action="inspect" ;;
   esac
@@ -282,7 +359,7 @@ scene_strip() {
     empty="$(printf '%*s' "$((45 - i))" '')"
     fill="${fill// /▓}"
     empty="${empty// /░}"
-    printf '\r   %b%-9s%b [%b%s%s%b] %b%s%b' "$C_ORANGE" "$manager" "$C_RESET" "$C_NEON" "$fill" "$empty" "$C_RESET" "$C_TIP" "$action" "$C_RESET"
+    printf '\r   %s [%b%s%s%b] %b%s%b' "$(styled_package_name "$manager" 9)" "$C_NEON" "$fill" "$empty" "$C_RESET" "$C_TIP" "$action" "$C_RESET"
     sleep_tick 0.035
   done
   printf '\n'
@@ -412,15 +489,15 @@ describe_tool() {
     yarn) printf 'JavaScript dependency manager used for project installs, workspaces, lock files, and reproducible package graphs.' ;;
     npm) printf 'Default Node.js package manager; updates npm itself and globally installed JavaScript command-line tools.' ;;
     npm-globals) printf 'Updates globally installed npm CLIs already present on PATH.' ;;
-    claude) printf 'Anthropic terminal assistant for codebase work, shell workflows, and developer automation.' ;;
-    codex) printf 'OpenAI local coding-agent CLI for reading code, editing files, running checks, and helping ship changes.' ;;
+    claude) printf 'Anthropic terminal assistant for codebase work; updated through its first-party `claude update` command.' ;;
+    codex) printf 'OpenAI local coding-agent CLI; updated through its first-party `codex update` command.' ;;
     hermes) printf 'Skipped on purpose: active agent runtimes should not be surprise-upgraded mid-workflow.' ;;
     brew) printf 'Homebrew package manager for Linux/macOS developer tools and formulae.' ;;
     uv) printf 'Fast Python package and tool manager; upgraded by its owning package manager here.' ;;
     pipx) printf 'Installs and upgrades isolated Python CLI applications.' ;;
     rustup) printf 'Rust toolchain manager; updates rustc/cargo toolchains when installed.' ;;
     gh) printf 'GitHub official command-line tool for pull requests, issues, repositories, auth, and extensions.' ;;
-    cleanup) printf 'Removes unneeded apt packages and clears package cache after successful system updates.' ;;
+    cleanup) printf 'Removes stale package-manager caches, disabled update leftovers, and known rebuildable workstation caches.' ;;
     *) printf 'Updater step.' ;;
   esac
 }
@@ -439,7 +516,7 @@ tool_card() {
   fi
 
   printf '   %b▌ %s%b\n' "$C_UNIT" "$heading" "$C_RESET"
-  [ -n "$package" ] && printf '   %b%-15s%b %b%s%b\n' "$C_LABEL" "package" "$C_RESET" "$C_PACKAGE" "$package" "$C_RESET"
+  [ -n "$package" ] && printf '   %b%-15s%b %s\n' "$C_LABEL" "package" "$C_RESET" "$(styled_package_name "$package")"
   version_rows "version before" "$version" "$C_VERSION_BEFORE"
   printf '   %b%-15s%b %b%s%b\n' "$C_PURPOSE" "purpose" "$C_RESET" "$C_PURPOSE" "$desc" "$C_RESET"
   printf '\n'
@@ -504,8 +581,8 @@ pending_updates_begin() {
 
 pending_update_line() {
   local name="$1" old="$2" new="$3"
-  printf '      %b%-30s%b %b%s%b %b->%b %b%s%b\n' \
-    "$C_CMD" "$name" "$C_RESET" \
+  printf '      %s %b%s%b %b->%b %b%s%b\n' \
+    "$(styled_package_name "$name" 30)" \
     "$C_VERSION_BEFORE" "$old" "$C_RESET" \
     "$C_FRAME" "$C_RESET" \
     "$C_VERSION_AFTER" "$new" "$C_RESET"
@@ -516,22 +593,102 @@ pending_update_note() {
 }
 
 cleanup_question() {
+  local cleanup_indent="   " cleanup_art_color cleanup_punct_color
+  cleanup_art_color="$C_CLEANUP_WORD"
+  cleanup_punct_color="$C_ORANGE"
   printf '\n'
   if command -v figlet >/dev/null 2>&1; then
     figlet -f future "APT CLEANUP?" 2>/dev/null | while IFS= read -r line; do
-      printf '%b%s%b\n' "$C_UNIT" "$line" "$C_RESET"
+      printf '%b%s%b\n' "$cleanup_art_color" "$line" "$C_RESET"
     done
   else
-    printf '%b%s%b\n' "$C_UNIT" "  ___  ___ _____   ___ _    ___   _   _  _ _   _ ___  ___" "$C_RESET"
-    printf '%b%s%b\n' "$C_UNIT" " / _ \\| _ \\_   _| / __| |  | __| /_\\ | \\| | | | | _ \\/ __|" "$C_RESET"
-    printf '%b%s%b\n' "$C_UNIT" "| (_) |  _/ | |  | (__| |__| _| / _ \\| .\\ | |_| |  _/\\__ \\" "$C_RESET"
-    printf '%b%s%b\n' "$C_UNIT" " \\___/|_|   |_|   \\___|____|___/_/ \\_\\_|\\_|\\___/|_|  |___/" "$C_RESET"
+    printf '%b%s%b\n' "$cleanup_art_color" "  ___  ___ _____   ___ _    ___   _   _  _ _   _ ___  ___" "$C_RESET"
+    printf '%b%s%b\n' "$C_CLEANUP_PUNCT" " / _ \\| _ \\_   _| / __| |  | __| /_\\ | \\| | | | | _ \\/ __|" "$C_RESET"
+    printf '%b%s%b\n' "$cleanup_art_color" "| (_) |  _/ | |  | (__| |__| _| / _ \\| .\\ | |_| |  _/\\__ \\" "$C_RESET"
+    printf '%b%s%b\n' "$C_CLEANUP_PUNCT" " \\___/|_|   |_|   \\___|____|___/_/ \\_\\_|\\_|\\___/|_|  |___/" "$C_RESET"
   fi
-  printf '   %bAPT CLEANUP?%b\n' "$C_UNIT" "$C_RESET"
-  printf '   %bThis will run apt-owned cleanup only.%b\n' "$C_PURPOSE" "$C_RESET"
-  printf '   %bIt may purge packages apt marks as no longer needed and clear downloaded apt caches.%b\n' "$C_PURPOSE" "$C_RESET"
-  printf '   %bNothing outside apt is deleted here.%b\n\n' "$C_TIP" "$C_RESET"
+  printf '%s%bAPT%b %bCLEANUP%b%b?%b\n' \
+    "$cleanup_indent" \
+    "$cleanup_punct_color" "$C_RESET" "$cleanup_art_color" "$C_RESET" "$cleanup_punct_color" "$C_RESET"
+  printf '%s%bThis will run apt-owned cleanup only.%b\n' "$cleanup_indent" "$C_PURPOSE" "$C_RESET"
+  printf '%s%bIt may purge packages apt marks as no longer needed and clear downloaded apt caches.%b\n' "$cleanup_indent" "$C_PURPOSE" "$C_RESET"
+  printf '%s%bNothing outside apt is deleted here.%b\n\n' "$cleanup_indent" "$C_TIP" "$C_RESET"
+  printf '%s%bAnswer y/N at the prompt below.%b\n\n' "$cleanup_indent" "$C_UNIT" "$C_RESET"
+}
+
+workstation_cleanup_question() {
+  printf '\n'
+  printf '   %bWORKSTATION CACHE CLEANUP?%b\n' "$C_UNIT" "$C_RESET"
+  printf '   %bThis removes rebuildable caches and old update leftovers only.%b\n' "$C_PURPOSE" "$C_RESET"
+  printf '   %bIt leaves archives, LLM weights, project data, active virtualenvs, and databases alone.%b\n' "$C_TIP" "$C_RESET"
+  printf '   %bTargets include npm/npx, pip, uv prune, Homebrew cleanup, browser automation caches, Python bytecode, disabled snap revisions, and journal trim.%b\n\n' "$C_PURPOSE" "$C_RESET"
   printf '   %bAnswer y/N at the prompt below.%b\n\n' "$C_UNIT" "$C_RESET"
+}
+
+run_workstation_cleanup() {
+  local code=0
+
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd npm cache clean --force
+    show_cmd rm -rf "$HOME/.npm/_npx"
+    show_cmd pip3 cache purge
+    show_cmd brew cleanup -s
+    show_cmd timeout 20s uv cache prune
+    printf '%b$%b rm -rf ~/.cache/{camoufox,ms-playwright,BraveSoftware,electron,node-gyp,node,Homebrew,pip}\n' "$C_CMD" "$C_RESET"
+    printf '%b$%b find ~ -xdev -type d \\( -name __pycache__ -o -name .pytest_cache \\) -prune -exec rm -rf -- {} +\n' "$C_CMD" "$C_RESET"
+    show_cmd rm -rf "$HOME/.codex/.tmp/plugins" "$HOME/.codex/.tmp/plugins.sha"
+    printf '%b$%b sudo remove disabled snap revisions from snap list --all\n' "$C_CMD" "$C_RESET"
+    show_cmd sudo journalctl --vacuum-size=512M
+    return 0
+  fi
+
+  if command -v npm >/dev/null 2>&1; then
+    run_cmd npm cache clean --force || code=1
+    rm -rf "$HOME/.npm/_npx" || code=1
+  fi
+
+  if command -v pip3 >/dev/null 2>&1; then
+    run_cmd pip3 cache purge || code=1
+  fi
+
+  if command -v brew >/dev/null 2>&1; then
+    run_cmd brew cleanup -s || code=1
+  fi
+
+  if command -v uv >/dev/null 2>&1; then
+    if command -v timeout >/dev/null 2>&1; then
+      run_cmd timeout 20s uv cache prune || code=1
+    else
+      run_cmd uv cache prune || code=1
+    fi
+  fi
+
+  rm -rf \
+    "$HOME/.cache/camoufox" \
+    "$HOME/.cache/ms-playwright" \
+    "$HOME/.cache/BraveSoftware" \
+    "$HOME/.cache/electron" \
+    "$HOME/.cache/node-gyp" \
+    "$HOME/.cache/node" \
+    "$HOME/.cache/Homebrew" \
+    "$HOME/.cache/pip" || code=1
+
+  find "$HOME" -xdev -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -exec rm -rf -- {} + || code=1
+  rm -rf "$HOME/.codex/.tmp/plugins" "$HOME/.codex/.tmp/plugins.sha" || code=1
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo_cmd bash -c 'set -e
+if command -v snap >/dev/null 2>&1; then
+  snap list --all | awk '"'"'$0 ~ /disabled/ {print $1, $3}'"'"' | while read -r name rev; do
+    [ -n "$name" ] || continue
+    snap remove "$name" --revision="$rev"
+  done
+fi
+journalctl --vacuum-size=512M
+' || code=1
+  fi
+
+  return "$code"
 }
 
 show_pending_apt_updates() {
@@ -777,7 +934,8 @@ report() {
 
     [ -n "$before" ] || before="-"
     [ -n "$after" ] || after="-"
-    printf '  %b%s %-9s%b %b%s%b\n' "$color" "$icon" "$stat" "$C_RESET" "$C_HEADER" "$lbl" "$C_RESET"
+    printf '  %b%s %-9s%b %b' "$color" "$icon" "$stat" "$C_RESET"
+    printf '%s\n' "$(styled_package_name "$lbl")"
     if [ "$before" != "-" ]; then
       printf '     %b%-8s%b %s\n' "$C_VERSION_BEFORE_LABEL" "before:" "$C_RESET" "$(receipt_value "$before")"
     fi
@@ -790,9 +948,9 @@ report() {
   done
 
   printf '%b\n' "$bar"
-  printf '  %bactive npm%b   %s\n' "$C_HEADER" "$C_RESET" "$(version_of npm-active 2>/dev/null || printf 'not found')"
-  printf '  %bbundled npm%b  %s\n' "$C_HEADER" "$C_RESET" "$(version_of npm-bundled 2>/dev/null || printf 'not found')"
-  printf '  %bnpm fund%b     npm funding notices are optional donation links, not errors or bills.\n' "$C_HEADER" "$C_RESET"
+  printf '  %b%s%b  %s\n' "$C_HEADER" "$(styled_package_name "active npm")" "$C_RESET" "$(version_of npm-active 2>/dev/null || printf 'not found')"
+  printf '  %b%s%b %s\n' "$C_HEADER" "$(styled_package_name "bundled npm")" "$C_RESET" "$(version_of npm-bundled 2>/dev/null || printf 'not found')"
+  printf '  %b%s%b  npm funding notices are optional donation links, not errors or bills.\n' "$C_HEADER" "$(styled_package_name "npm fund")" "$C_RESET"
   printf '  %b%s%b        package purpose notes are plain-English guidance; registry/advisory lookups belong to Safety Coach Mode.\n' "$C_HEADER" "notes" "$C_RESET"
   printf '%b\n\n' "$bar"
 
@@ -992,26 +1150,34 @@ run_updates() {
     run_cmd npm update -g --no-fund
     track "npm globals" $?
 
-    before="$(version_of claude 2>/dev/null || true)"
-    section "claude code"
-    tool_card "claude" "Claude Code CLI" "$before" "@anthropic-ai/claude-code@latest"
-    run_cmd npm install -g @anthropic-ai/claude-code@latest --no-fund
-    after="$(version_of claude 2>/dev/null || true)"
-    track "claude code" $? "$before" "$after"
+    if command -v claude >/dev/null 2>&1; then
+      before="$(version_of claude 2>/dev/null || true)"
+      section "claude code"
+      tool_card "claude" "Claude Code CLI" "$before" "claude update"
+      run_cmd claude update
+      after="$(version_of claude 2>/dev/null || true)"
+      track "claude code" $? "$before" "$after" "uses Claude Code's first-party updater"
+    else
+      skip_tool "claude" "Claude Code CLI" "claude code" "claude command not installed" "claude update"
+    fi
 
-    before="$(version_of codex 2>/dev/null || true)"
-    section "codex"
-    tool_card "codex" "OpenAI Codex CLI" "$before" "@openai/codex@latest"
-    run_cmd npm install -g @openai/codex@latest --no-fund
-    after="$(version_of codex 2>/dev/null || true)"
-    track "codex" $? "$before" "$after"
+    if command -v codex >/dev/null 2>&1; then
+      before="$(version_of codex 2>/dev/null || true)"
+      section "codex"
+      tool_card "codex" "OpenAI Codex CLI" "$before" "codex update"
+      run_cmd codex update
+      after="$(version_of codex 2>/dev/null || true)"
+      track "codex" $? "$before" "$after" "uses Codex CLI's first-party updater"
+    else
+      skip_tool "codex" "OpenAI Codex CLI" "codex" "codex command not installed" "codex update"
+    fi
 
     skip_tool "hermes" "Hermes Agent" "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows" "hermes-agent"
   else
     skip_tool "npm" "npm self-update" "npm self-update" "npm command not installed" "npm@latest"
     skip_tool "npm-globals" "npm global packages" "npm globals" "npm command not installed" "npm"
-    skip_tool "claude" "Claude Code CLI" "claude code" "npm command not installed" "@anthropic-ai/claude-code@latest"
-    skip_tool "codex" "OpenAI Codex CLI" "codex" "npm command not installed" "@openai/codex@latest"
+    skip_tool "claude" "Claude Code CLI" "claude code" "npm command not installed for global npm sweep; install Claude Code separately first" "claude update"
+    skip_tool "codex" "OpenAI Codex CLI" "codex" "npm command not installed for global npm sweep; install Codex separately first" "codex update"
     skip_tool "hermes" "Hermes Agent" "Hermes Agent" "intentionally not updated here; avoids breaking active agent workflows" "hermes-agent"
   fi
 
@@ -1109,6 +1275,16 @@ run_updates() {
     fi
   else
     skip_step "apt autoremove" "skipped by user; no packages removed or cache cleaned"
+  fi
+
+  section "workstation cache cleanup"
+  tool_card "cleanup" "workstation cache cleanup"
+  workstation_cleanup_question
+  if confirm_step "Run workstation cache cleanup now? This removes rebuildable caches and old update leftovers."; then
+    run_workstation_cleanup
+    track "workstation cache cleanup" $? "" "" "safe cache/trash sweep; archives, LLM weights, databases, and project data are left alone"
+  else
+    skip_step "workstation cache cleanup" "skipped by user; no non-apt caches removed"
   fi
 }
 

@@ -10,7 +10,7 @@ Amber terminal-styled, local-first updater for Linux developer workstations and 
 
 So you installed OpenClaw, Hermes, a pile of npm tools, maybe some Python CLIs, maybe Homebrew on Linux, and now the terminal looks like it is speaking electricity? `update-all` is here to help.
 
-`update-all` is a standalone Bash command that explains and updates the developer tools people actually use: system packages, desktop package managers, Node tooling, global CLIs, Python/Rust tools, Homebrew/Linuxbrew, and GitHub extensions.
+`update-all` is a standalone Bash command that explains and updates the developer tools people actually use: system packages, desktop package managers, Node tooling, global CLIs, Python/Rust tools, Homebrew/Linuxbrew, GitHub extensions, and first-party agent CLI updaters such as `claude update` and `codex update`.
 
 It is meant for Ubuntu/Linux developer workstations. It is not a fleet patching system or production server automation.
 
@@ -24,7 +24,7 @@ update-all
 
 - One memorable command for many update surfaces.
 - Plain-English explanations before scary-looking package-manager output.
-- The original orange block `UPDATE ALL` intro.
+- Orange title art with a centered binary divider (`update` on top, `all` centered).
 - Thin readable section titles with restrained amber motion.
 - 50% wider interactive progress strips for update sections.
 - A compact dark-teal binary divider under the opening art.
@@ -33,6 +33,7 @@ update-all
 - Calmer path/version rows where the version value stands out without overpowering the card.
 - `version before` appears near the top of each package card, while `version after` closes the update section for quick comparison.
 - Pending update lists before supported upgrade steps, including old -> new versions where the package manager exposes them cleanly.
+- Separate cleanup prompts for apt-owned cleanup and broader rebuildable workstation caches.
 - Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
 - Distinct apt colors for repository traffic versus summary lines such as `Fetched ...` and `Reading package lists...`.
 - Before/after tracking and a final receipt summary.
@@ -61,9 +62,7 @@ It is also useful for experienced developers who want a quick workstation update
  ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗
   ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝
       01110101  01110000  01100100  01100001  01110100  01100101
-      00101101  01100001  01101100  01101100  00101101  00101110
-
-▶  update-all
+                     01100001  01101100  01101100
 
 ┏┓╻┏━┓┏┳┓
 ┃┗┫┣━┛┃┃┃
@@ -71,12 +70,12 @@ It is also useful for experienced developers who want a quick workstation update
 
 ╾──── CODEX ────╼
    ▌ OPENAI CODEX CLI
-   package          @openai/codex@latest
+   package          codex update
    version before   codex-cli 0.x
    path             /path/to/codex
    purpose          OpenAI local coding-agent CLI for reading code, editing files, running checks, and helping ship changes.
 
-$ npm install -g @openai/codex@latest --no-fund
+$ codex update
    result           UNCHANGED
    path             /path/to/codex
    version after    codex-cli 0.x
@@ -172,13 +171,14 @@ Other package managers still stream their native update output and are tracked i
 | `pnpm` | pnpm package-manager activation/update |
 | `yarn` | Yarn package-manager activation/update |
 | `npm` globals | Global npm CLIs |
-| Claude Code | Anthropic's terminal coding assistant CLI |
-| Codex | OpenAI's local coding-agent CLI |
+| Claude Code | Anthropic's terminal coding assistant CLI, updated with `claude update` |
+| Codex | OpenAI's local coding-agent CLI, updated with `codex update` |
 | Homebrew/Linuxbrew | Brew-managed developer tools |
 | `uv` | Python package/tool manager |
 | `pipx` | Isolated Python CLI apps |
 | `rustup` | Rust toolchains |
 | `gh extension` | GitHub CLI extensions |
+| Workstation cleanup | Rebuildable caches and old update leftovers: npm/npx, pip, bounded uv prune, Homebrew cleanup, browser automation caches, Python bytecode/test caches, disabled snap revisions, and journal trim |
 
 ## Configuration
 
@@ -219,6 +219,7 @@ Keep secret values out of shell history, committed files, screenshots, and logs.
 - No replacement for first-party package managers; it calls them.
 - Cleanup/removal steps ask first in live mode and skip if the terminal is not interactive.
 - Apt cleanup uses apt-owned cleanup only: `apt-get autoremove --purge -y`, `apt-get autoclean`, and `apt-get clean`.
+- Workstation cache cleanup is separate and only removes rebuildable caches or old update leftovers. It intentionally leaves archives, models, databases, project data, installed runtimes, and active virtualenvs alone.
 - `Hermes Agent` is intentionally skipped to avoid surprise-upgrading active agent workflows.
 - Best for personal developer workstations, not production servers.
 
