@@ -80,12 +80,9 @@ color_init() {
 
   if [ "${ncolors:-0}" -ge 256 ]; then
     C_RESET="$(tput sgr0)"
-    C_BOLD="$(tput bold)"
-    C_DIM="$(tput dim)"
     C_OK="$(tput setaf 35)"
     C_WARN="$(tput setaf 214)"
     C_BAD="$(tput setaf 203)"
-    C_INFO="$(tput setaf 250)"
     C_CMD="$(tput setaf 222)"
     C_TIP="$(tput setaf 245)"
     C_HEADER="$(tput bold)$(tput setaf 231)"
@@ -108,16 +105,11 @@ color_init() {
     C_BINARY="$(tput setaf 30)"
     C_CLEANUP_WORD="$(tput setaf 230)"
     C_CLEANUP_PUNCT="$(tput setaf 223)"
-    C_BRAND="$C_ORANGE"
-    C_PANEL="$(tput setaf 236)"
   elif [ "${ncolors:-0}" -ge 8 ]; then
     C_RESET="$(tput sgr0)"
-    C_BOLD="$(tput bold)"
-    C_DIM="$(tput dim)"
     C_OK="$(tput setaf 2)"
     C_WARN="$(tput setaf 3)"
     C_BAD="$(tput setaf 1)"
-    C_INFO="$(tput dim)"
     C_CMD="$(tput setaf 3)"
     C_TIP="$(tput dim)"
     C_HEADER="$(tput bold)"
@@ -140,18 +132,15 @@ color_init() {
     C_BINARY="$(tput setaf 6)"
     C_CLEANUP_WORD="$(tput setaf 3)"
     C_CLEANUP_PUNCT="$(tput dim)$(tput setaf 3)"
-    C_BRAND="$C_ORANGE"
-    C_PANEL="$(tput dim)"
   else
-    C_RESET=""; C_BOLD=""; C_DIM=""; C_OK=""; C_WARN=""; C_BAD=""; C_INFO=""
+    C_RESET=""; C_OK=""; C_WARN=""; C_BAD=""
     C_CMD=""; C_TIP=""; C_HEADER=""; C_LABEL=""; C_FRAME=""
-    C_BRAND=""; C_ORANGE=""; C_NEON=""; C_UNIT=""; C_PURPOSE=""
+    C_ORANGE=""; C_NEON=""; C_UNIT=""; C_PURPOSE=""
     C_VERSION_LABEL=""; C_VERSION_BEFORE_LABEL=""; C_VERSION_AFTER_LABEL=""
     C_VERSION_BEFORE=""; C_VERSION_AFTER=""; C_PATH=""; C_RESULT=""; C_LOG=""
     C_APT_SOURCE=""; C_APT_PROGRESS=""; C_BINARY=""
     C_CLEANUP_WORD=""
     C_CLEANUP_PUNCT=""
-    C_PANEL=""
   fi
 }
 
@@ -184,7 +173,7 @@ scan_line() {
 }
 
 title_spin() {
-  local label="$1" frames='|/-\' i frame
+  local label="$1" frames="|/-\\" i frame
   if ! anim_enabled; then
     printf '\n%b== %s ==%b\n' "$C_HEADER" "$label" "$C_RESET"
     return 0
@@ -286,12 +275,12 @@ styled_package_color() {
       printf '%s' "$C_NEON" ;;
     node)
       printf '%s' "$C_PATH" ;;
-    *npm*)
-      printf '%s' "$C_VERSION_AFTER" ;;
     corepack)
       printf '%s' "$C_APT_PROGRESS" ;;
     pnpm)
       printf '%s' "$C_RESULT" ;;
+    *npm*)
+      printf '%s' "$C_VERSION_AFTER" ;;
     yarn)
       printf '%s' "$C_PURPOSE" ;;
     uv)
@@ -460,13 +449,13 @@ color_log_stream() {
       *removed*|*removing*|*autoremove*|*prune*|*cleanup*)
         printf '%b%s%b\n' "$C_TIP" "$line" "$C_RESET"
         ;;
-      *fund*|*funding*|*donation*)
+      *fund*|*donation*)
         printf '%b%s%b\n' "$C_TIP" "$line" "$C_RESET"
         ;;
       preparing\ *@*\ for\ immediate\ activation*)
         printf '%b%s%b\n' "$C_APT_PROGRESS" "$line" "$C_RESET"
         ;;
-      *@anthropic-ai/claude-code*|*@openai/codex*|*npm@*|*pnpm@*|*yarn@*)
+      *@anthropic-ai/claude-code*|*@openai/codex*|*pnpm@*|*npm@*|*yarn@*)
         printf '%b%s%b\n' "$C_HEADER" "$line" "$C_RESET"
         ;;
       fetched\ *|reading\ package\ lists*|building\ dependency\ tree*|reading\ state\ information*)
@@ -506,8 +495,8 @@ describe_tool() {
     bun) printf 'JavaScript runtime, package manager, and test runner; updated with Bun'\''s first-party upgrade command.' ;;
     npm) printf 'Default Node.js package manager; updates npm itself and globally installed JavaScript command-line tools.' ;;
     npm-globals) printf 'Updates globally installed npm CLIs already present on PATH.' ;;
-    claude) printf 'Anthropic terminal assistant for codebase work; updated through its first-party `claude update` command.' ;;
-    codex) printf 'OpenAI local coding-agent CLI; updated through its first-party `codex update` command.' ;;
+    claude) printf 'Anthropic terminal assistant for codebase work; updated through its first-party claude update command.' ;;
+    codex) printf 'OpenAI local coding-agent CLI; updated through its first-party codex update command.' ;;
     hermes) printf 'Skipped on purpose: active agent runtimes should not be surprise-upgraded mid-workflow.' ;;
     brew) printf 'Homebrew package manager for Linux/macOS developer tools and formulae.' ;;
     uv) printf 'Fast Python package and tool manager; upgraded by its owning package manager here.' ;;
@@ -700,9 +689,12 @@ run_workstation_cleanup() {
   if command -v sudo >/dev/null 2>&1; then
     sudo_cmd env -u BASH_ENV -u ENV bash --noprofile --norc -c 'set -e
 if command -v snap >/dev/null 2>&1; then
-  snap list --all | awk '"'"'$0 ~ /disabled/ {print $1, $3}'"'"' | while read -r name rev; do
+  snap list --all | while read -r name _ rev _ _ notes; do
     [ -n "$name" ] || continue
-    snap remove "$name" --revision="$rev"
+    [ "$name" = "Name" ] && continue
+    case "$notes" in
+      *disabled*) snap remove "$name" --revision="$rev" ;;
+    esac
   done
 fi
 journalctl --vacuum-size=512M
@@ -1087,7 +1079,7 @@ report() {
 
     [ -n "$before" ] || before="-"
     [ -n "$after" ] || after="-"
-    printf '  %b%s %-9s%b %b' "$color" "$icon" "$stat" "$C_RESET"
+    printf '  %b%s %-9s%b ' "$color" "$icon" "$stat" "$C_RESET"
     printf '%s\n' "$(styled_package_name "$lbl")"
     if [ "$before" != "-" ]; then
       printf '     %b%-8s%b %s\n' "$C_VERSION_BEFORE_LABEL" "before:" "$C_RESET" "$(receipt_value "$before")"
@@ -1151,7 +1143,7 @@ cleanup_next_steps() {
   [ -z "$apt_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$apt_note"
   printf '  %b%-18s%b %b%s%b\n' "$C_LABEL" "cache cleanup" "$C_RESET" "$C_RESULT" "$cache_status" "$C_RESET"
   [ -z "$cache_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$cache_note"
-  printf '  %b%-18s%b Cleanup is interactive in live runs: review each prompt, answer yes only for cleanup you understand, and use --dry-run to preview commands again.%b\n' "$C_PURPOSE" "guidance" "$C_RESET"
+  printf '  %b%-18s%b %bCleanup is interactive in live runs: review each prompt, answer yes only for cleanup you understand, and use --dry-run to preview commands again.%b\n' "$C_LABEL" "guidance" "$C_RESET" "$C_PURPOSE" "$C_RESET"
   printf '%b\n\n' "$bar"
 }
 
