@@ -750,6 +750,70 @@ show_pending_brew_updates() {
   printf '\n'
 }
 
+show_brew_tap_trust_preflight() {
+  local taps tap info source installed installed_from_tap untrusted_count=0 remove_code=0
+
+  pending_updates_begin "brew tap trust preflight"
+  printf '  %bWhat this checks:%b extra Homebrew tap repositories outside the default Homebrew set.\n' "$C_HEADER" "$C_RESET"
+  printf '  %bPlain English:%b an Untrusted tap is not automatically malware and it is not an expired license.\n' "$C_HEADER" "$C_RESET"
+  printf '  It means Homebrew cannot prove the tap belongs to a trusted source. A tap can define install and update code, so it deserves a pause.\n'
+  printf '  %bGold standard:%b remove unused or unrecognized untrusted taps; keep one only when you intentionally need it and trust its source.\n' "$C_HEADER" "$C_RESET"
+  printf '  update-all will explain the finding and ask before untapping anything.\n'
+
+  taps="$(brew tap 2>/dev/null || true)"
+  if [ -z "$taps" ]; then
+    pending_update_note "no third-party taps are configured"
+    printf '\n'
+    track "brew tap trust" 0 "" "" "no third-party taps configured"
+    return 0
+  fi
+
+  while IFS= read -r tap; do
+    [ -n "$tap" ] || continue
+    info="$(brew tap-info "$tap" 2>&1 || true)"
+    if printf '%s\n' "$info" | grep -Eq '(^|[[:space:]])Untrusted($|[[:space:]])'; then
+      untrusted_count=$((untrusted_count + 1))
+      source="$(printf '%s\n' "$info" | sed -n 's/^From:[[:space:]]*//p' | sed -n '1p')"
+      installed="$(brew list --formula --full-name 2>/dev/null; brew list --cask --full-name 2>/dev/null || true)"
+      installed_from_tap="$(printf '%s\n' "$installed" | grep -F "$tap/" || true)"
+
+      printf '\n  %bPAUSE%b Homebrew marks %s as Untrusted.\n' "$C_WARN" "$C_RESET" "$tap"
+      [ -n "$source" ] && printf '       source: %s\n' "$source"
+      printf '       meaning: Homebrew does not have a trust proof for this tap.\n'
+      printf '       not a verdict: this alone does not prove the tap is malicious.\n'
+      if [ -n "$installed_from_tap" ]; then
+        printf '       installed from this tap:\n'
+        printf '%s\n' "$installed_from_tap" | sed 's/^/         - /'
+        printf '       recommended action: keep it for now only if you rely on those tools, then review the tap source before future upgrades.\n'
+      else
+        printf '       installed from this tap: none detected by brew list --full-name.\n'
+        printf '       recommended action: untap it now. Unused untrusted taps should not stay in your update path.\n'
+      fi
+      printf '       command if approved: brew untap %s\n' "$tap"
+      if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+        show_cmd brew untap "$tap"
+      elif confirm_step "Untap $tap before brew update? Recommended yes if unused or unfamiliar; no if you intentionally rely on it."; then
+        brew untap "$tap" || remove_code=1
+      else
+        printf '%bKEEP%b %s left installed by user choice.\n' "$C_WARN" "$C_RESET" "$tap"
+      fi
+    else
+      pending_update_note "$tap: no untrusted marker reported"
+    fi
+  done <<< "$taps"
+
+  if [ "$untrusted_count" -eq 0 ]; then
+    pending_update_note "no untrusted taps reported by brew tap-info"
+    track "brew tap trust" 0 "" "" "no untrusted taps reported"
+  elif [ "$remove_code" -eq 0 ]; then
+    track "brew tap trust" 0 "" "" "reviewed $untrusted_count untrusted tap(s); removals were prompt-gated"
+  else
+    track "brew tap trust" 1 "" "" "one or more requested brew untap commands failed"
+  fi
+  printf '\n'
+  return "$remove_code"
+}
+
 confirm_step() {
   local prompt="$1" answer
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
@@ -1186,6 +1250,7 @@ run_updates() {
     before="$(version_of brew 2>/dev/null || true)"
     section "brew update + upgrade"
     tool_card "brew" "Homebrew formulae" "$before"
+    show_brew_tap_trust_preflight || true
     show_pending_brew_updates
     run_shell 'brew update && brew upgrade'
     after="$(version_of brew 2>/dev/null || true)"

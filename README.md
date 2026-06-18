@@ -159,6 +159,8 @@ Current pending-update list support:
 | `npm globals` | `npm outdated -g`, parsed as package current -> latest |
 | Homebrew/Linuxbrew | `brew outdated --verbose`, parsed where Homebrew output includes old/new |
 
+Homebrew also gets a tap-trust preflight before `brew update`. If Homebrew marks a third-party tap as `Untrusted`, `update-all` explains in plain English that this is a trust/provenance warning, not proof of malware and not an expired-license warning. The recommended gold standard is to remove unused or unrecognized untrusted taps, and keep one only when you intentionally need it and trust its source. `update-all` shows the exact `brew untap ...` command and asks before doing anything.
+
 Other package managers still stream their native update output and are tracked in the final receipt. Broader registry-backed package discovery belongs to planned Safety Coach Mode.
 
 | Tool | Area |
@@ -240,7 +242,7 @@ The goal is not "delete scary things automatically." The goal is:
 7. Show the exact command it is about to run.
 8. Leave a receipt so you can learn from what happened.
 
-Safety Coach Mode should use first-party or well-known security sources where possible, such as package-manager metadata, registry deprecation flags, audit commands, and vulnerability databases such as OSV. It should never auto-remove a package just because a warning appeared.
+The Homebrew tap-trust preflight is the first narrow slice of this idea. Full Safety Coach Mode should use first-party or well-known security sources where possible, such as package-manager metadata, registry deprecation flags, audit commands, and vulnerability databases such as OSV. It should never auto-remove a package just because a warning appeared.
 
 Planned examples:
 

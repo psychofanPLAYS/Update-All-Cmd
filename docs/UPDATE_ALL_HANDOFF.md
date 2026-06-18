@@ -5,8 +5,8 @@ Last updated: 2026-06-07 EDT
 ## Project
 
 `update-all` is a Bash CLI for beginner-friendly Linux workstation updates.
-It lives at `/home/clawski/_Programs/Update-All-Cmd`, with the installed command
-symlinked at `/home/clawski/.local/bin/update-all`.
+Clone it anywhere you keep small tools, then use `install.sh` to place an
+`update-all` command on your PATH.
 
 ## Current Product Direction
 
@@ -85,6 +85,12 @@ Do not delete archives, models, databases, project data, installed runtimes, or 
 
 Safety Coach Mode is planned, not shipped.
 
+One narrow slice is now shipped for Homebrew taps: before `brew update`,
+`update-all` checks `brew tap-info` for Homebrew's `Untrusted` marker, explains
+that this is a trust/provenance warning rather than proof of malware or an
+expired-license problem, gives the gold-standard recommendation, shows the
+exact `brew untap ...` command, and asks before untapping anything.
+
 It should:
 
 - Pull package descriptions from trusted package-manager/registry metadata.
@@ -113,7 +119,7 @@ git diff --check
 Also verify the installed command path when changing install-facing behavior:
 
 ```bash
-bash -n /home/clawski/.local/bin/update-all
+bash -n ~/.local/bin/update-all
 update-all --dry-run --no-anim --no-color
 ```
 

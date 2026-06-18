@@ -152,3 +152,60 @@ awk '
     expecting_card=0
   }
 ' <<< "$output" || fail "expected section headers to keep spacing before section card output"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+cat > "$tmpdir/brew" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  --version)
+    printf 'Homebrew 6.0.0\n'
+    ;;
+  tap)
+    printf 'steipete/tap\n'
+    ;;
+  tap-info)
+    cat <<'INFO'
+steipete/tap: Installed
+Untrusted
+From: https://github.com/steipete/homebrew-tap
+==> Formulae
+mcporter
+poltergeist
+INFO
+    ;;
+  list)
+    if [ "$2" = "--formula" ] || [ "$2" = "--cask" ]; then
+      exit 0
+    fi
+    ;;
+  outdated)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+chmod +x "$tmpdir/brew"
+
+brew_output="$(PATH="$tmpdir:$PATH" "$UPDATE_ALL" --dry-run --no-anim --no-color)"
+
+printf '%s\n' "$brew_output" | grep -F "brew tap trust preflight" >/dev/null \
+  || fail "expected Homebrew tap trust preflight section"
+
+printf '%s\n' "$brew_output" | grep -F "Plain English:" >/dev/null \
+  || fail "expected plain-English explanation for untrusted taps"
+
+printf '%s\n' "$brew_output" | grep -F "Gold standard:" >/dev/null \
+  || fail "expected recommended gold-standard action for untrusted taps"
+
+printf '%s\n' "$brew_output" | grep -F "not automatically malware" >/dev/null \
+  || fail "expected calm malware-vs-trust clarification"
+
+printf '%s\n' "$brew_output" | grep -F "recommended action: untap it now" >/dev/null \
+  || fail "expected unused untrusted tap removal recommendation"
+
+printf '%s\n' "$brew_output" | grep -F "brew untap steipete/tap" >/dev/null \
+  || fail "expected exact untap command to be shown in dry-run"
