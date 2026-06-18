@@ -1,14 +1,16 @@
 # Update All Cmd
 
-Amber terminal-styled, local-first updater for Linux developer workstations and brave beginners who installed half the internet and now want help cleaning it up.
+Amber terminal-styled, local-first updater for Linux developer workstations: one command for package updates, safety prompts, optional cleanup, and readable receipts.
 
+[![CI](https://github.com/psychofanPLAYS/Update-All-Cmd/actions/workflows/ci.yml/badge.svg)](https://github.com/psychofanPLAYS/Update-All-Cmd/actions/workflows/ci.yml)
 ![Bash CLI](https://img.shields.io/badge/Bash-CLI-121011?logo=gnubash&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-workstations-FCC624?logo=linux&logoColor=111111)
 ![License: MIT](https://img.shields.io/badge/license-MIT-0f766e)
 ![Dry run](https://img.shields.io/badge/dry--run-supported-2563eb)
 ![Local first](https://img.shields.io/badge/local--first-no%20cloud%20upload-16a34a)
+![Security policy](https://img.shields.io/badge/security-policy-0f766e)
 
-So you installed OpenClaw, Hermes, a pile of npm tools, maybe some Python CLIs, maybe Homebrew on Linux, and now the terminal looks like it is speaking electricity? `update-all` is here to help.
+![Colored terminal preview of update-all](docs/terminal-preview.svg)
 
 `update-all` is a standalone Bash command that explains and updates the developer tools people actually use: system packages, desktop package managers, Node/Bun tooling, global CLIs, Python/Rust tools, Homebrew/Linuxbrew, editor extensions, firmware, GitHub extensions, and first-party agent CLI updaters such as `claude update` and `codex update`.
 
@@ -35,6 +37,7 @@ update-all
 - `version before` appears near the top of each package card, while `version after` closes the update section for quick comparison.
 - Pending update lists before supported upgrade steps, including old -> new versions where the package manager exposes them cleanly.
 - Separate cleanup prompts for apt-owned cleanup and broader rebuildable workstation caches.
+- End-of-run cleanup guidance that tells you whether cleanup ran, was skipped, or needs review.
 - Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
 - Distinct apt colors for repository traffic versus summary lines such as `Fetched ...` and `Reading package lists...`.
 - Before/after tracking and a final receipt summary.
@@ -56,48 +59,7 @@ It is also useful for experienced developers who want a quick workstation update
 
 ## Preview
 
-```text
- ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗      █████╗ ██╗     ██╗
- ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝     ██╔══██╗██║     ██║
- ██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗       ███████║██║     ██║
- ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝       ██╔══██║██║     ██║
- ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗     ██║  ██║███████╗███████╗
-  ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚═╝  ╚═╝╚══════╝╚══════╝
-      01110101  01110000  01100100  01100001  01110100  01100101
-                     01100001  01101100  01101100
-
-┏┓╻┏━┓┏┳┓
-┃┗┫┣━┛┃┃┃
-╹ ╹╹  ╹ ╹
-
-╾──── CODEX ────╼
-   ▌ OPENAI CODEX CLI
-   package          codex update
-   version before   codex-cli 0.x
-   path             /path/to/codex
-   purpose          OpenAI local coding-agent CLI for reading code, editing files, running checks, and helping ship changes.
-
-$ codex update
-   result           UNCHANGED
-   path             /path/to/codex
-   version after    codex-cli 0.x
-
-┏━┓┏━╸┏━╸┏━╸╻┏━┓╺┳╸
-┣┳┛┣╸ ┃  ┣╸ ┃┣━┛ ┃
-╹┗╸┗━╸┗━╸┗━╸╹╹   ╹
-────────────────────────────────────────────────────────────────────────────────────────
-  started          2026-06-07 14:05:37 EDT
-  elapsed          12s
-  receipt summary    0 updated  5 ok  13 unchanged  4 skipped  0 failed
-────────────────────────────────────────────────────────────────────────────────────────
-  RUN DETAILS
-────────────────────────────────────────────────────────────────────────────────────────
-  = UNCHANGED codex
-     before:  /path/to/codex codex-cli 0.x
-     after:   /path/to/codex codex-cli 0.x
-```
-
-The real run streams package-manager output live. Use `--no-anim` or `--no-color` when you want simpler logs.
+The colored snapshot above is generated from a real `update-all --dry-run` terminal capture, with local paths sanitized for the public repo. The real run streams package-manager output live. Use `--no-anim` or `--no-color` when you want simpler logs.
 
 ## Install
 
@@ -283,7 +245,7 @@ bash -n install.sh
 bash tests/test-output-format.sh
 ./bin/update-all --help
 ./bin/update-all --dry-run --no-anim --no-color
-cspell README.md bin/update-all install.sh docs/UPDATE_ALL_HANDOFF.md cspell.json tests/test-output-format.sh
+cspell README.md bin/update-all install.sh docs/UPDATE_ALL_HANDOFF.md cspell.json tests/test-output-format.sh CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md .github/*.md .github/*.yml .github/**/*.md .github/**/*.yml
 git diff --check
 ```
 
@@ -303,6 +265,7 @@ npm install -g cspell@latest --no-fund
 |-- install.sh
 |-- LICENSE
 |-- docs/
+|   |-- terminal-preview.svg
 |   `-- UPDATE_ALL_HANDOFF.md
 |-- .github/
 |   `-- workflows/

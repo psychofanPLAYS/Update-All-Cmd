@@ -36,10 +36,12 @@ Clone it anywhere you keep small tools, then use `install.sh` to place an
   `Reading package lists`) use separate colors.
 - Missing tools still print cards and end as `SKIP` so beginners learn what they are.
 - Final section is `RECEIPT`, with counts and per-step `before:`, `after:`, and `note:` detail rows.
+- `CLEANUP NEXT STEPS` appears at the end of the receipt and summarizes apt cleanup, workstation cache cleanup, and the interactive cleanup rule for live runs.
 - Claude Code and Codex use their first-party updaters (`claude update`, `codex update`) instead of relying on npm install to refresh the active binaries.
 - `COVERAGE PREFLIGHT` appears before update work and tells the user which installed surfaces will be checked, which common surfaces are skipped, and which categories remain manual by design.
 - Command output goes through a defensive redactor for common secret shapes before printing.
 - Internal compound shell commands use `env -u BASH_ENV -u ENV bash --noprofile --norc -c ...` so update-all does not source shell startup files for its own control flow.
+- `docs/terminal-preview.svg` is a sanitized colored SVG generated from a real `update-all --dry-run` terminal capture; keep it visually faithful when the CLI's first screen changes.
 
 ## Pending Update Lists
 
@@ -149,7 +151,7 @@ bash -n install.sh
 bash tests/test-output-format.sh
 ./bin/update-all --help
 ./bin/update-all --dry-run --no-anim --no-color
-cspell README.md bin/update-all install.sh docs/UPDATE_ALL_HANDOFF.md cspell.json tests/test-output-format.sh
+cspell README.md bin/update-all install.sh docs/UPDATE_ALL_HANDOFF.md cspell.json tests/test-output-format.sh CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md .github/*.md .github/*.yml .github/**/*.md .github/**/*.yml
 git diff --check
 ```
 

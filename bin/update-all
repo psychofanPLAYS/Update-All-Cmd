@@ -1107,11 +1107,52 @@ report() {
   printf '  %b%s%b        package purpose notes are plain-English guidance; registry/advisory lookups belong to Safety Coach Mode.\n' "$C_HEADER" "notes" "$C_RESET"
   printf '%b\n\n' "$bar"
 
+  cleanup_next_steps "$bar"
+
   if [ "$rc" -eq 0 ]; then
     printf '%b✓  update-all finished without failed steps%b\n\n' "$C_OK" "$C_RESET"
   else
     printf '%b✗  one or more steps failed - see FAIL rows above%b\n\n' "$C_BAD" "$C_RESET"
   fi
+}
+
+cleanup_status_for() {
+  local label="$1" i
+  for ((i = 0; i < ${#_ua_labels[@]}; i++)); do
+    if [ "${_ua_labels[$i]}" = "$label" ]; then
+      printf '%s' "${_ua_stats[$i]}"
+      return 0
+    fi
+  done
+  printf 'SKIP'
+}
+
+cleanup_note_for() {
+  local label="$1" i
+  for ((i = 0; i < ${#_ua_labels[@]}; i++)); do
+    if [ "${_ua_labels[$i]}" = "$label" ]; then
+      printf '%s' "${_ua_notes[$i]}"
+      return 0
+    fi
+  done
+  printf 'not reached'
+}
+
+cleanup_next_steps() {
+  local bar="$1" apt_status cache_status apt_note cache_note
+  apt_status="$(cleanup_status_for "apt autoremove")"
+  cache_status="$(cleanup_status_for "workstation cache cleanup")"
+  apt_note="$(cleanup_note_for "apt autoremove")"
+  cache_note="$(cleanup_note_for "workstation cache cleanup")"
+
+  printf '  %bCLEANUP NEXT STEPS%b\n' "$C_HEADER" "$C_RESET"
+  printf '%b\n' "$bar"
+  printf '  %b%-18s%b %b%s%b\n' "$C_LABEL" "apt cleanup" "$C_RESET" "$C_RESULT" "$apt_status" "$C_RESET"
+  [ -z "$apt_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$apt_note"
+  printf '  %b%-18s%b %b%s%b\n' "$C_LABEL" "cache cleanup" "$C_RESET" "$C_RESULT" "$cache_status" "$C_RESET"
+  [ -z "$cache_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$cache_note"
+  printf '  %b%-18s%b Cleanup is interactive in live runs: review each prompt, answer yes only for cleanup you understand, and use --dry-run to preview commands again.%b\n' "$C_PURPOSE" "guidance" "$C_RESET"
+  printf '%b\n\n' "$bar"
 }
 
 receipt_value() {

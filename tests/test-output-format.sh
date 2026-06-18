@@ -103,6 +103,12 @@ printf '%s\n' "$output" | grep -F "receipt summary" >/dev/null \
 printf '%s\n' "$output" | grep -F "RUN DETAILS" >/dev/null \
   || fail "expected professional receipt details section"
 
+printf '%s\n' "$output" | grep -F "CLEANUP NEXT STEPS" >/dev/null \
+  || fail "expected final cleanup next-steps section"
+
+printf '%s\n' "$output" | grep -F "Cleanup is interactive in live runs" >/dev/null \
+  || fail "expected final cleanup guidance to explain interactive cleanup"
+
 printf '%s\n' "$output" | grep -F "before:" >/dev/null \
   || fail "expected receipt before detail rows"
 

@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a safer or clearer update workflow.
+title: "Feature: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Good feature requests keep the tool beginner-friendly, local-first, and explicit about risky changes.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should `update-all` say or do?
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - Read-only explanation
+        - Runs update command
+        - Removes or cleans files
+        - Changes system or firmware state
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Links, examples, or package-manager documentation.

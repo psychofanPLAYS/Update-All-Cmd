@@ -1,0 +1,40 @@
+name: Bug report
+description: Report something that is broken, confusing, or unsafe.
+title: "Bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve `update-all`. Please avoid pasting secrets, private paths, sudo passwords, tokens, or full machine logs.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem in plain language.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      description: Include the exact command, such as `update-all --dry-run --no-anim --no-color`.
+      render: bash
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, shell, and which package managers are installed. Redact private paths or hostnames.
+  - type: textarea
+    id: safe-output
+    attributes:
+      label: Relevant output
+      description: Paste only the smallest useful output. Redact secrets and private machine details.
+      render: text

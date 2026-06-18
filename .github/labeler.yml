@@ -1,0 +1,37 @@
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/workflows/**
+          - .github/dependabot.yml
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - README.md
+          - docs/**
+          - CONTRIBUTING.md
+          - SECURITY.md
+          - CODE_OF_CONDUCT.md
+          - .github/**/*.md
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - bin/**
+          - install.sh
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tests/**
+
+spelling:
+  - changed-files:
+      - any-glob-to-any-file:
+          - cspell.json
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - SECURITY.md
+          - .github/workflows/**
