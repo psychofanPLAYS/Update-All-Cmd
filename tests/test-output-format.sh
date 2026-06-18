@@ -190,13 +190,13 @@ case "$1" in
     printf 'Homebrew 6.0.0\n'
     ;;
   tap)
-    printf 'steipete/tap\n'
+    printf 'example/tap\n'
     ;;
   tap-info)
     cat <<'INFO'
-steipete/tap: Installed
+example/tap: Installed
 Untrusted
-From: https://github.com/steipete/homebrew-tap
+From: https://github.com/example/homebrew-tap
 ==> Formulae
 mcporter
 poltergeist
@@ -234,7 +234,7 @@ printf '%s\n' "$brew_output" | grep -F "not automatically malware" >/dev/null \
 printf '%s\n' "$brew_output" | grep -F "recommended action: untap it now" >/dev/null \
   || fail "expected unused untrusted tap removal recommendation"
 
-printf '%s\n' "$brew_output" | grep -F "brew untap steipete/tap" >/dev/null \
+printf '%s\n' "$brew_output" | grep -F "brew untap example/tap" >/dev/null \
   || fail "expected exact untap command to be shown in dry-run"
 
 printf '%s\n' "$brew_output" | grep -F "env -u BASH_ENV -u ENV bash --noprofile --norc -c" >/dev/null \
