@@ -37,6 +37,9 @@ Clone it anywhere you keep small tools, then use `install.sh` to place an
 - Missing tools still print cards and end as `SKIP` so beginners learn what they are.
 - Final section is `RECEIPT`, with counts and per-step `before:`, `after:`, and `note:` detail rows.
 - Claude Code and Codex use their first-party updaters (`claude update`, `codex update`) instead of relying on npm install to refresh the active binaries.
+- `COVERAGE PREFLIGHT` appears before update work and tells the user which installed surfaces will be checked, which common surfaces are skipped, and which categories remain manual by design.
+- Command output goes through a defensive redactor for common secret shapes before printing.
+- Internal compound shell commands use `env -u BASH_ENV -u ENV bash --noprofile --norc -c ...` so update-all does not source shell startup files for its own control flow.
 
 ## Pending Update Lists
 
@@ -46,10 +49,29 @@ Implemented:
 - `npm globals`: `npm outdated -g --depth=0`, parsed as current -> latest.
 - Homebrew/Linuxbrew: `brew outdated --verbose`, parsed where brew output exposes old/new.
 
-Not yet implemented:
+Not yet implemented as old -> new preflight tables:
 
-- Snap, Flatpak, uv, pipx, rustup, and gh extension old -> new preflight lists.
-  Their native output is still streamed and receipt-tracked.
+- Snap, Flatpak, Bun, uv, pipx, rustup, cargo-installed CLIs, gh extensions,
+  editor extensions, and firmware old -> new preflight lists. Their native
+  output is still streamed and receipt-tracked.
+
+## Coverage Behavior
+
+`update-all` should update installed common workstation surfaces, then explain
+manual boundaries instead of silently touching risky project-specific areas.
+
+Currently handled or explicitly skipped:
+
+- dpkg/apt, snap, flatpak, Node/update-node, corepack, pnpm, yarn, Bun, npm
+  globals, Claude Code, Codex, Homebrew/Linuxbrew, uv, pipx, rustup,
+  cargo-installed CLIs when `cargo-install-update` already exists, GitHub CLI
+  extensions, VS Code/VSCodium extensions, firmware via `fwupdmgr`, apt cleanup,
+  and workstation cache cleanup.
+
+Manual by design:
+
+- Project repositories, active agent runtimes, containers/images, conda
+  environments, large LLM weights, and shell profile edits.
 
 ## Cleanup Behavior
 
@@ -79,7 +101,22 @@ sudo remove disabled snap revisions
 sudo journalctl --vacuum-size=512M
 ```
 
-Do not delete archives, models, databases, project data, installed runtimes, or active virtualenvs from this cleanup path.
+Do not delete archives, LLM weights, databases, project data, installed runtimes, or active virtualenvs from this cleanup path.
+
+## Sudo And Secret Boundary
+
+- `update-all` stores no sudo password, token, API key, or private value in the
+  repository.
+- If `UPDATE_ALL_SUDO_SECRET_KEY` is set, the external `secret` helper value is
+  passed to `sudo -S` through stdin and the prompt is blanked; the value is not
+  printed by update-all.
+- All streamed command output passes through redaction for common OpenAI,
+  GitHub, Slack, AWS, private-key-header, and `TOKEN=value` / `PASSWORD=value`
+  shapes before printing.
+- Compound shell commands remove `BASH_ENV`/`ENV` and use
+  `bash --noprofile --norc`; do not replace this with `bash -lc`.
+- This redaction is a guardrail, not a reason to store raw secrets in shell
+  profiles or committed files.
 
 ## Safety Coach Scope
 
@@ -112,7 +149,7 @@ bash -n install.sh
 bash tests/test-output-format.sh
 ./bin/update-all --help
 ./bin/update-all --dry-run --no-anim --no-color
-cspell README.md bin/update-all install.sh
+cspell README.md bin/update-all install.sh docs/UPDATE_ALL_HANDOFF.md cspell.json tests/test-output-format.sh
 git diff --check
 ```
 

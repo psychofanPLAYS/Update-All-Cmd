@@ -10,7 +10,7 @@ Amber terminal-styled, local-first updater for Linux developer workstations and 
 
 So you installed OpenClaw, Hermes, a pile of npm tools, maybe some Python CLIs, maybe Homebrew on Linux, and now the terminal looks like it is speaking electricity? `update-all` is here to help.
 
-`update-all` is a standalone Bash command that explains and updates the developer tools people actually use: system packages, desktop package managers, Node tooling, global CLIs, Python/Rust tools, Homebrew/Linuxbrew, GitHub extensions, and first-party agent CLI updaters such as `claude update` and `codex update`.
+`update-all` is a standalone Bash command that explains and updates the developer tools people actually use: system packages, desktop package managers, Node/Bun tooling, global CLIs, Python/Rust tools, Homebrew/Linuxbrew, editor extensions, firmware, GitHub extensions, and first-party agent CLI updaters such as `claude update` and `codex update`.
 
 It is meant for Ubuntu/Linux developer workstations. It is not a fleet patching system or production server automation.
 
@@ -23,6 +23,7 @@ update-all
 ## What You Get
 
 - One memorable command for many update surfaces.
+- A coverage preflight that explains what will be updated and what stays manual.
 - Plain-English explanations before scary-looking package-manager output.
 - Orange title art with a centered binary divider (`update` on top, `all` centered).
 - Thin readable section titles with restrained amber motion.
@@ -37,6 +38,7 @@ update-all
 - Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
 - Distinct apt colors for repository traffic versus summary lines such as `Fetched ...` and `Reading package lists...`.
 - Before/after tracking and a final receipt summary.
+- Defensive log redaction for common token/key shapes if a package manager prints something it should not.
 - One receipt-level note explains metadata/source limits, instead of repeating source text on every package card.
 - Quiet modes for logs, scripts, accessibility, and plain terminals.
 - Public-safe configuration: no passwords, tokens, or private machine values stored in the repo.
@@ -172,6 +174,7 @@ Other package managers still stream their native update output and are tracked i
 | `corepack` | Node package-manager shims |
 | `pnpm` | pnpm package-manager activation/update |
 | `yarn` | Yarn package-manager activation/update |
+| `bun` | Bun runtime/package-manager update via `bun upgrade` |
 | `npm` globals | Global npm CLIs |
 | Claude Code | Anthropic's terminal coding assistant CLI, updated with `claude update` |
 | Codex | OpenAI's local coding-agent CLI, updated with `codex update` |
@@ -179,8 +182,13 @@ Other package managers still stream their native update output and are tracked i
 | `uv` | Python package/tool manager |
 | `pipx` | Isolated Python CLI apps |
 | `rustup` | Rust toolchains |
+| Cargo-installed CLIs | Uses `cargo install-update -a` only when the helper already exists |
 | `gh extension` | GitHub CLI extensions |
+| VS Code/VSCodium extensions | Updates installed editor extensions when `code` or `codium` exists |
+| `fwupdmgr` | Linux firmware updates, prompt-gated because firmware can require trust prompts or reboot |
 | Workstation cleanup | Rebuildable caches and old update leftovers: npm/npx, pip, bounded uv prune, Homebrew cleanup, browser automation caches, Python bytecode/test caches, disabled snap revisions, and journal trim |
+
+The coverage preflight also names things that stay manual by design: project repositories, active agent runtimes, containers/images, conda environments, large LLM weights, and shell profile edits. Those need project context, tests, or explicit user approval rather than a surprise global update.
 
 ## Configuration
 
@@ -210,6 +218,8 @@ export UPDATE_ALL_SUDO_SECRET_KEY="your-key-name"
 
 Keep secret values out of shell history, committed files, screenshots, and logs. If this variable is not configured, normal interactive `sudo` behavior may apply.
 
+`update-all` pipes sudo output through the same log redactor as other commands. It never stores the sudo password in the repository, and the optional helper passes the password over stdin to `sudo -S` without printing the value.
+
 ## Safety And Privacy
 
 `update-all` is designed to be visible and boringly safe.
@@ -218,6 +228,8 @@ Keep secret values out of shell history, committed files, screenshots, and logs.
 - No telemetry layer.
 - Package managers still make their normal network requests to download updates; `update-all` just keeps the control flow local and visible.
 - No tokens, API keys, or passwords stored in this repository.
+- Streamed command output is redacted for common secret shapes such as OpenAI keys, GitHub tokens, Slack tokens, AWS access keys, private-key headers, and simple `TOKEN=value` / `PASSWORD=value` style lines.
+- Compound shell commands run with `BASH_ENV` and `ENV` removed and `bash --noprofile --norc`, so the updater does not source `.bashrc` or other shell startup files for its own control flow.
 - No replacement for first-party package managers; it calls them.
 - Cleanup/removal steps ask first in live mode and skip if the terminal is not interactive.
 - Apt cleanup uses apt-owned cleanup only: `apt-get autoremove --purge -y`, `apt-get autoclean`, and `apt-get clean`.
@@ -268,9 +280,10 @@ Run these before committing changes:
 ```bash
 bash -n bin/update-all
 bash -n install.sh
+bash tests/test-output-format.sh
 ./bin/update-all --help
 ./bin/update-all --dry-run --no-anim --no-color
-cspell README.md bin/update-all install.sh
+cspell README.md bin/update-all install.sh docs/UPDATE_ALL_HANDOFF.md cspell.json tests/test-output-format.sh
 git diff --check
 ```
 
@@ -289,6 +302,10 @@ npm install -g cspell@latest --no-fund
 |-- cspell.json
 |-- install.sh
 |-- LICENSE
+|-- docs/
+|   `-- UPDATE_ALL_HANDOFF.md
+|-- .github/
+|   `-- workflows/
 |-- tests/
 |   `-- test-output-format.sh
 `-- README.md
@@ -298,7 +315,7 @@ Primary command: [bin/update-all](bin/update-all)
 
 ## Project Status
 
-Personal utility, public-safe prototype. The command is useful today, but the repo is still early: there is no CI workflow yet and full integration tests should use mocked package-manager commands.
+Personal utility, public-safe prototype. The command is useful today and has GitHub Actions smoke coverage, but the repo is still early. Full integration tests should use more mocked package-manager commands before this becomes a broad workstation standard.
 
 ## Roadmap
 

@@ -340,6 +340,7 @@ scene_strip() {
     *corepack*) manager="corepack"; action="wire shims" ;;
     *pnpm*) manager="pnpm"; action="activate latest" ;;
     *yarn*) manager="yarn"; action="activate stable" ;;
+    *bun*) manager="bun"; action="upgrade runtime" ;;
     *npm*self*) manager="npm"; action="self update" ;;
     *npm*globals*) manager="npm"; action="global package graph" ;;
     *claude*) manager="npm"; action="claude code" ;;
@@ -348,7 +349,10 @@ scene_strip() {
     *uv*) manager="uv"; action="toolchain sweep" ;;
     *pipx*) manager="pipx"; action="isolated CLIs" ;;
     *rustup*) manager="rustup"; action="toolchains" ;;
+    *cargo*) manager="cargo"; action="installed CLIs" ;;
     *gh*) manager="gh"; action="extensions" ;;
+    *code*|*codium*) manager="code"; action="editor extensions" ;;
+    *firmware*|*fwupd*) manager="fwupd"; action="firmware check" ;;
     *workstation*cleanup*|*cache*cleanup*) manager="cache"; action="safe cache sweep" ;;
     *clean*) manager="apt"; action="cleanup gate" ;;
     *) manager="sys"; action="inspect" ;;
@@ -399,10 +403,10 @@ run_cmd() {
 run_shell() {
   local script="$1" code
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
-    printf '%b$%b bash -lc %q\n' "$C_CMD" "$C_RESET" "$script"
+    show_cmd env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script"
     return 0
   fi
-  bash -lc "$script" 2>&1 | color_log_stream
+  env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script" 2>&1 | color_log_stream
   code=${PIPESTATUS[0]}
   return "$code"
 }
@@ -436,7 +440,8 @@ sudo_cmd() {
 
 color_log_stream() {
   local line lower
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="$(redact_secrets "$line")"
     lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
     if [ -z "$line" ]; then
       printf '\n'
@@ -477,6 +482,17 @@ color_log_stream() {
   done
 }
 
+redact_secrets() {
+  printf '%s' "$1" | sed -E \
+    -e 's/sk-[A-Za-z0-9_-]{20,}/[REDACTED_OPENAI_KEY]/g' \
+    -e 's/github_pat_[A-Za-z0-9_]{20,}/[REDACTED_GITHUB_TOKEN]/g' \
+    -e 's/gh[pousr]_[A-Za-z0-9_]{20,}/[REDACTED_GITHUB_TOKEN]/g' \
+    -e 's/xox[baprs]-[A-Za-z0-9-]{20,}/[REDACTED_SLACK_TOKEN]/g' \
+    -e 's/AKIA[0-9A-Z]{16}/[REDACTED_AWS_ACCESS_KEY]/g' \
+    -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[REDACTED_PRIVATE_KEY_BEGIN]/g' \
+    -e 's/([A-Za-z_][A-Za-z0-9_]*(TOKEN|PASSWORD|PASS|SECRET|API_KEY|APIKEY|ACCESS_KEY)[A-Za-z0-9_]*[[:space:]]*=[[:space:]]*)[^[:space:]\[]+/\1[REDACTED]/g'
+}
+
 describe_tool() {
   case "$1" in
     dpkg) printf 'Debian package database integrity check; catches interrupted installs before apt runs.' ;;
@@ -487,6 +503,7 @@ describe_tool() {
     corepack) printf 'Node-shipped package-manager shim that activates pnpm/yarn without manual installs.' ;;
     pnpm) printf 'Fast JavaScript package manager with a content-addressable store that saves disk space across projects.' ;;
     yarn) printf 'JavaScript dependency manager used for project installs, workspaces, lock files, and reproducible package graphs.' ;;
+    bun) printf 'JavaScript runtime, package manager, and test runner; updated with Bun'\''s first-party upgrade command.' ;;
     npm) printf 'Default Node.js package manager; updates npm itself and globally installed JavaScript command-line tools.' ;;
     npm-globals) printf 'Updates globally installed npm CLIs already present on PATH.' ;;
     claude) printf 'Anthropic terminal assistant for codebase work; updated through its first-party `claude update` command.' ;;
@@ -496,7 +513,11 @@ describe_tool() {
     uv) printf 'Fast Python package and tool manager; upgraded by its owning package manager here.' ;;
     pipx) printf 'Installs and upgrades isolated Python CLI applications.' ;;
     rustup) printf 'Rust toolchain manager; updates rustc/cargo toolchains when installed.' ;;
+    cargo-installed) printf 'Rust command-line tools installed with cargo; updated only when the cargo-install-update helper already exists.' ;;
     gh) printf 'GitHub official command-line tool for pull requests, issues, repositories, auth, and extensions.' ;;
+    code) printf 'Editor extensions for Visual Studio Code-compatible CLIs; updates extensions, not editor settings or projects.' ;;
+    fwupd) printf 'Linux firmware update service; checks vendor firmware updates and asks before applying them.' ;;
+    coverage) printf 'Preflight coverage map that explains what update-all will handle and what remains intentionally manual.' ;;
     cleanup) printf 'Removes stale package-manager caches, disabled update leftovers, and known rebuildable workstation caches.' ;;
     *) printf 'Updater step.' ;;
   esac
@@ -677,7 +698,7 @@ run_workstation_cleanup() {
   rm -rf "$HOME/.codex/.tmp/plugins" "$HOME/.codex/.tmp/plugins.sha" || code=1
 
   if command -v sudo >/dev/null 2>&1; then
-    sudo_cmd bash -c 'set -e
+    sudo_cmd env -u BASH_ENV -u ENV bash --noprofile --norc -c 'set -e
 if command -v snap >/dev/null 2>&1; then
   snap list --all | awk '"'"'$0 ~ /disabled/ {print $1, $3}'"'"' | while read -r name rev; do
     [ -n "$name" ] || continue
@@ -779,8 +800,8 @@ show_brew_tap_trust_preflight() {
 
       printf '\n  %bPAUSE%b Homebrew marks %s as Untrusted.\n' "$C_WARN" "$C_RESET" "$tap"
       [ -n "$source" ] && printf '       source: %s\n' "$source"
-      printf '       meaning: Homebrew does not have a trust proof for this tap.\n'
-      printf '       not a verdict: this alone does not prove the tap is malicious.\n'
+      printf '       meaning: Homebrew has no trust proof for this tap.\n'
+      printf '       not a verdict: this alone is not proof that the tap is malicious.\n'
       if [ -n "$installed_from_tap" ]; then
         printf '       installed from this tap:\n'
         printf '%s\n' "$installed_from_tap" | sed 's/^/         - /'
@@ -830,6 +851,62 @@ confirm_step() {
     y|Y|yes|YES|Yes) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+coverage_item() {
+  local title="$1" command_name="$2" action="$3"
+  if command -v "$command_name" >/dev/null 2>&1; then
+    printf '   %b%-24s%b %b%-11s%b %s\n' "$C_LABEL" "$title" "$C_RESET" "$C_OK" "will check" "$C_RESET" "$action"
+  else
+    printf '   %b%-24s%b %b%-11s%b %s\n' "$C_LABEL" "$title" "$C_RESET" "$C_TIP" "skip" "$C_RESET" "$command_name not installed"
+  fi
+}
+
+coverage_manual_item() {
+  printf '   %b%-24s%b %b%-11s%b %s\n' "$C_LABEL" "$1" "$C_RESET" "$C_WARN" "manual" "$C_RESET" "$2"
+}
+
+show_update_coverage_preflight() {
+  banner "COVERAGE"
+  section "coverage preflight"
+  tool_card "coverage" "update coverage" "current run" "installed tools only"
+  printf '   %bPlain English:%b update-all updates the common workstation things it can safely detect.\n' "$C_HEADER" "$C_RESET"
+  printf '   It calls first-party/package-manager commands; it never invents a private updater or silently edits projects.\n'
+  printf '   Secret safety: updater logs are redacted for common token/key shapes, and internal shell calls avoid shell startup files.\n\n'
+
+  coverage_item "apt / dpkg" "apt-get" "OS packages and package database health"
+  coverage_item "snap apps" "snap" "snap refresh"
+  coverage_item "flatpak apps" "flatpak" "flatpak update"
+  coverage_item "Node runtime" "update-node" "user-local Node runtime when update-node exists"
+  coverage_item "Corepack / pnpm / yarn" "corepack" "package-manager shims and activated managers"
+  coverage_item "npm globals" "npm" "npm itself and globally installed npm CLIs"
+  coverage_item "Claude Code CLI" "claude" "claude update"
+  coverage_item "Codex CLI" "codex" "codex update"
+  coverage_item "Homebrew/Linuxbrew" "brew" "brew update, tap trust preflight, brew upgrade"
+  coverage_item "Bun runtime" "bun" "bun upgrade"
+  coverage_item "uv tools" "uv" "uv self/tool updates"
+  coverage_item "pipx apps" "pipx" "pipx upgrade-all"
+  coverage_item "Rust toolchains" "rustup" "rustup update"
+  coverage_item "Cargo-installed CLIs" "cargo-install-update" "cargo install-update -a when helper exists"
+  coverage_item "GitHub extensions" "gh" "gh extension upgrade --all"
+  if command -v code >/dev/null 2>&1; then
+    coverage_item "VS Code extensions" "code" "code --update-extensions"
+  elif command -v codium >/dev/null 2>&1; then
+    coverage_item "VSCodium extensions" "codium" "codium --update-extensions"
+  else
+    printf '   %b%-24s%b %b%-11s%b %s\n' "$C_LABEL" "editor extensions" "$C_RESET" "$C_TIP" "skip" "$C_RESET" "code/codium not installed"
+  fi
+  coverage_item "Linux firmware" "fwupdmgr" "fwupdmgr update, prompt-gated"
+
+  printf '\n'
+  coverage_manual_item "project repositories" "manual by design; each repo needs tests and rollback context"
+  coverage_manual_item "active agent runtimes" "manual by design; Hermes/OpenClaw-style stacks should not be surprise-upgraded"
+  coverage_manual_item "containers/images" "manual by design; updating images can break running services"
+  coverage_manual_item "conda environments" "manual by design; environment solves are project-specific"
+  coverage_manual_item "LLM weights" "manual by design; downloads are large and workload-specific"
+  coverage_manual_item "shell profiles" "never sourced for update logic; do not store raw secrets in .bashrc"
+
+  track "coverage preflight" 0 "" "" "installed safe surfaces are updated; project-specific stacks stay explicit"
 }
 
 pkg_json_version() {
@@ -896,8 +973,20 @@ version_of() {
     cargo)
       command -v cargo >/dev/null 2>&1 && printf '%s %s' "$(command -v cargo)" "$(cargo --version 2>/dev/null | sed -n '1p')"
       ;;
+    cargo-install-update)
+      command -v cargo-install-update >/dev/null 2>&1 && printf '%s %s' "$(command -v cargo-install-update)" "$(cargo-install-update --version 2>/dev/null | sed -n '1p')"
+      ;;
     gh)
       command -v gh >/dev/null 2>&1 && printf '%s %s' "$(command -v gh)" "$(gh --version 2>/dev/null | sed -n '1p')"
+      ;;
+    code)
+      command -v code >/dev/null 2>&1 && printf '%s %s' "$(command -v code)" "$(code --version 2>/dev/null | sed -n '1p')"
+      ;;
+    codium)
+      command -v codium >/dev/null 2>&1 && printf '%s %s' "$(command -v codium)" "$(codium --version 2>/dev/null | sed -n '1p')"
+      ;;
+    fwupd)
+      command -v fwupdmgr >/dev/null 2>&1 && printf '%s %s' "$(command -v fwupdmgr)" "$(fwupdmgr --version 2>/dev/null | sed -n '1p')"
       ;;
     snap)
       command -v snap >/dev/null 2>&1 && printf '%s %s' "$(command -v snap)" "$(snap version 2>/dev/null | awk '/^snap /{print $2; exit}')"
@@ -1081,6 +1170,8 @@ prime_sudo() {
 run_updates() {
   local before after dpkg_audit dpkg_audit_code
 
+  show_update_coverage_preflight
+
   banner "SYSTEM"
   section "dpkg audit"
   tool_card "dpkg" "dpkg audit"
@@ -1137,6 +1228,33 @@ run_updates() {
     track "flatpak update" $? "$before" "$after"
   else
     skip_tool "flatpak" "flatpak apps" "flatpak update" "flatpak command not installed" "flatpak"
+  fi
+
+  if command -v fwupdmgr >/dev/null 2>&1; then
+    before="$(version_of fwupd 2>/dev/null || true)"
+    section "firmware updates"
+    tool_card "fwupd" "Linux firmware updates" "$before" "fwupdmgr update"
+    if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+      show_cmd fwupdmgr refresh --force
+      show_cmd fwupdmgr update
+      after="$(version_of fwupd 2>/dev/null || true)"
+      track "firmware updates" 0 "$before" "$after" "dry-run: firmware update is prompt-gated in a live run"
+    elif confirm_step "Check and apply firmware updates now? This may require vendor trust prompts or a reboot."; then
+      run_cmd fwupdmgr refresh --force
+      local fw_refresh=$?
+      run_cmd fwupdmgr update
+      local fw_update=$?
+      after="$(version_of fwupd 2>/dev/null || true)"
+      if [ "$fw_refresh" -eq 0 ] && [ "$fw_update" -eq 0 ]; then
+        track "firmware updates" 0 "$before" "$after" "fwupd completed; follow any reboot guidance it printed"
+      else
+        track "firmware updates" 1 "$before" "$after" "refresh exit=$fw_refresh, update exit=$fw_update"
+      fi
+    else
+      skip_step "firmware updates" "skipped by user; firmware was not changed"
+    fi
+  else
+    skip_tool "fwupd" "Linux firmware updates" "firmware updates" "fwupdmgr command not installed" "fwupdmgr update"
   fi
 
   banner "NODE"
@@ -1197,6 +1315,17 @@ run_updates() {
     skip_tool "corepack" "Corepack shims" "corepack enable" "corepack command not installed" "corepack"
     skip_tool "pnpm" "pnpm package manager" "pnpm self-update" "corepack command not installed" "pnpm@latest"
     skip_tool "yarn" "Yarn package manager" "yarn self-update" "corepack command not installed" "yarn@stable"
+  fi
+
+  if command -v bun >/dev/null 2>&1; then
+    before="$(version_of bun 2>/dev/null || true)"
+    section "bun upgrade"
+    tool_card "bun" "Bun runtime" "$before" "bun upgrade"
+    run_cmd bun upgrade
+    after="$(version_of bun 2>/dev/null || true)"
+    track "bun upgrade" $? "$before" "$after" "uses Bun's first-party updater"
+  else
+    skip_tool "bun" "Bun runtime" "bun upgrade" "bun command not installed" "bun upgrade"
   fi
 
   banner "NPM"
@@ -1311,6 +1440,21 @@ run_updates() {
     skip_tool "rustup" "cargo version" "cargo version" "rustup command not installed" "cargo"
   fi
 
+  if command -v cargo >/dev/null 2>&1; then
+    if command -v cargo-install-update >/dev/null 2>&1; then
+      before="$(version_of cargo-install-update 2>/dev/null || true)"
+      section "cargo install-update"
+      tool_card "cargo-installed" "Cargo-installed CLIs" "$before" "cargo install-update -a"
+      run_cmd cargo install-update -a
+      after="$(version_of cargo-install-update 2>/dev/null || true)"
+      track "cargo installed CLIs" $? "$before" "$after" "updates cargo-installed binaries through the existing cargo-update helper"
+    else
+      skip_tool "cargo-installed" "Cargo-installed CLIs" "cargo installed CLIs" "cargo exists, but cargo-install-update is not installed; not installing new Rust helpers automatically" "cargo install-update -a"
+    fi
+  else
+    skip_tool "cargo-installed" "Cargo-installed CLIs" "cargo installed CLIs" "cargo command not installed" "cargo install-update -a"
+  fi
+
   if command -v gh >/dev/null 2>&1; then
     before="$(version_of gh 2>/dev/null || true)"
     section "gh extension upgrade"
@@ -1320,6 +1464,24 @@ run_updates() {
     track "gh extensions" $? "$before" "$after"
   else
     skip_tool "gh" "GitHub CLI extensions" "gh extensions" "gh command not installed" "gh"
+  fi
+
+  if command -v code >/dev/null 2>&1; then
+    before="$(version_of code 2>/dev/null || true)"
+    section "code extension update"
+    tool_card "code" "VS Code extensions" "$before" "code --update-extensions"
+    run_cmd code --update-extensions
+    after="$(version_of code 2>/dev/null || true)"
+    track "code extensions" $? "$before" "$after" "updates installed VS Code extensions only"
+  elif command -v codium >/dev/null 2>&1; then
+    before="$(version_of codium 2>/dev/null || true)"
+    section "codium extension update"
+    tool_card "code" "VSCodium extensions" "$before" "codium --update-extensions"
+    run_cmd codium --update-extensions
+    after="$(version_of codium 2>/dev/null || true)"
+    track "codium extensions" $? "$before" "$after" "updates installed VSCodium extensions only"
+  else
+    skip_tool "code" "Editor extensions" "editor extensions" "code/codium command not installed" "code --update-extensions"
   fi
 
   banner "CLEANUP"
@@ -1356,6 +1518,10 @@ run_updates() {
 main() {
   parse_args "$@"
   color_init
+  if [ "${UPDATE_ALL_REDACTION_SELFTEST:-0}" = 1 ]; then
+    color_log_stream
+    return 0
+  fi
   _ua_started_s="$(date +%s)"
   _ua_started_h="$(date '+%Y-%m-%d %H:%M:%S %Z')"
   _ua_prev_int_trap="$(trap -p INT || true)"

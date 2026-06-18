@@ -76,6 +76,27 @@ printf '%s\n' "$output" | grep -F "01110101  01110000" >/dev/null \
 printf '%s\n' "$output" | grep -F "pending updates" >/dev/null \
   || fail "expected pending updates block before updater output"
 
+printf '%s\n' "$output" | grep -F "COVERAGE PREFLIGHT" >/dev/null \
+  || fail "expected coverage preflight before update work starts"
+
+printf '%s\n' "$output" | grep -F "Secret safety:" >/dev/null \
+  || fail "expected secret safety explanation in coverage preflight"
+
+printf '%s\n' "$output" | grep -F "BUN RUNTIME" >/dev/null \
+  || fail "expected Bun runtime to be covered or explicitly skipped"
+
+printf '%s\n' "$output" | grep -F "CARGO-INSTALLED CLIS" >/dev/null \
+  || fail "expected cargo-installed CLI coverage"
+
+printf '%s\n' "$output" | grep -F "EDITOR EXTENSIONS" >/dev/null \
+  || fail "expected editor extension coverage"
+
+printf '%s\n' "$output" | grep -F "LINUX FIRMWARE UPDATES" >/dev/null \
+  || fail "expected firmware update coverage"
+
+printf '%s\n' "$output" | grep -F "shell profiles" >/dev/null \
+  || fail "expected shell profile boundary in coverage preflight"
+
 printf '%s\n' "$output" | grep -F "receipt summary" >/dev/null \
   || fail "expected final receipt summary"
 
@@ -209,3 +230,24 @@ printf '%s\n' "$brew_output" | grep -F "recommended action: untap it now" >/dev/
 
 printf '%s\n' "$brew_output" | grep -F "brew untap steipete/tap" >/dev/null \
   || fail "expected exact untap command to be shown in dry-run"
+
+printf '%s\n' "$brew_output" | grep -F "env -u BASH_ENV -u ENV bash --noprofile --norc -c" >/dev/null \
+  || fail "expected compound shell commands to avoid shell startup files"
+
+openai_token="sk-$(printf 'a%.0s' {1..24})"
+github_token="ghp_$(printf 'b%.0s' {1..24})"
+redacted="$(printf 'OPENAI_API_KEY=%s GITHUB_TOKEN=%s\n' "$openai_token" "$github_token" | UPDATE_ALL_REDACTION_SELFTEST=1 "$UPDATE_ALL" --no-anim --no-color)"
+
+printf '%s\n' "$redacted" | grep -F "[REDACTED_OPENAI_KEY]" >/dev/null \
+  || fail "expected OpenAI-style token redaction"
+
+printf '%s\n' "$redacted" | grep -F "[REDACTED_GITHUB_TOKEN]" >/dev/null \
+  || fail "expected GitHub-style token redaction"
+
+if printf '%s\n' "$redacted" | grep -F "$openai_token" >/dev/null; then
+  fail "OpenAI-style test token leaked through redaction"
+fi
+
+if printf '%s\n' "$redacted" | grep -F "$github_token" >/dev/null; then
+  fail "GitHub-style test token leaked through redaction"
+fi
