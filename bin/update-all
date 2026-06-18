@@ -687,6 +687,7 @@ run_workstation_cleanup() {
   rm -rf "$HOME/.codex/.tmp/plugins" "$HOME/.codex/.tmp/plugins.sha" || code=1
 
   if command -v sudo >/dev/null 2>&1; then
+    # shellcheck disable=SC2016 # Keep the root cleanup script literal until bash -c receives it.
     sudo_cmd env -u BASH_ENV -u ENV bash --noprofile --norc -c 'set -e
 if command -v snap >/dev/null 2>&1; then
   snap list --all | while read -r name _ rev _ _ notes; do
