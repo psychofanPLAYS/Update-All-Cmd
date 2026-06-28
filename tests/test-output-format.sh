@@ -305,6 +305,7 @@ printf 'npm warn allow-scripts   @anthropic-ai/claude-code@2.1.195 (postinstall:
   | UPDATE_ALL_CLASSIFY_SELFTEST=npm-claude-script "$UPDATE_ALL" --no-anim --no-color \
   || fail "expected npm Claude Code allow-scripts warning to trigger trusted script retry"
 
+# shellcheck disable=SC2016 # Fixture intentionally contains literal backticks from uv output.
 printf 'warning: The package `typer==0.26.8` does not have an extra named `all`\n' \
   | UPDATE_ALL_CLASSIFY_SELFTEST=uv-stale-extra "$UPDATE_ALL" --no-anim --no-color \
   || fail "expected uv stale optional-extra warning to be recognized"

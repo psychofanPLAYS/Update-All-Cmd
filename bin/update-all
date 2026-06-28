@@ -1014,10 +1014,10 @@ collect_optional_choices() {
       for ((i = 0; i < ${#_ua_brew_taps[@]}; i++)); do
         print_brew_tap_insight "${_ua_brew_taps[$i]}" "${_ua_brew_sources[$i]}" "${_ua_brew_installed[$i]}"
         if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
-          _ua_brew_untap_choices[$i]="yes"
+          _ua_brew_untap_choices[i]="yes"
           printf '%bDRY-RUN%b untap command will be previewed for %s.\n' "$C_WARN" "$C_RESET" "${_ua_brew_taps[$i]}"
         elif ask_optional_choice "Untap ${_ua_brew_taps[$i]} before brew update? Recommended yes if unused or unfamiliar; no if you intentionally rely on it."; then
-          _ua_brew_untap_choices[$i]="yes"
+          _ua_brew_untap_choices[i]="yes"
         fi
       done
       printf '\n'
@@ -1551,8 +1551,8 @@ run_updates() {
       after="$(version_of fwupd 2>/dev/null || true)"
       track "firmware updates" 0 "$before" "$after" "dry-run: firmware update is prompt-gated in a live run"
     elif choice_is_yes "$_ua_firmware_choice"; then
-      local fw_refresh_output fw_updates_output fw_update_output
-      run_cmd_capture fw_refresh_output fwupdmgr refresh --force
+      local fw_updates_output fw_update_output
+      run_cmd fwupdmgr refresh --force
       local fw_refresh=$?
       run_cmd_capture fw_updates_output fwupdmgr get-updates
       local fw_updates=$?
