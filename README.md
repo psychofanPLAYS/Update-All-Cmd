@@ -26,6 +26,7 @@ update-all
 
 - One memorable command for many update surfaces.
 - A coverage preflight that explains what will be updated and what stays manual.
+- Optional risky choices are asked up front, so the live update sweep can finish without surprise y/N pauses halfway through.
 - Plain-English explanations before scary-looking package-manager output.
 - Orange title art with a centered binary divider (`update` on top, `all` centered).
 - Thin readable section titles with restrained amber motion.
@@ -36,8 +37,10 @@ update-all
 - Calmer path/version rows where the version value stands out without overpowering the card.
 - `version before` appears near the top of each package card, while `version after` closes the update section for quick comparison.
 - Pending update lists before supported upgrade steps, including old -> new versions where the package manager exposes them cleanly.
-- Separate cleanup prompts for apt-owned cleanup and broader rebuildable workstation caches.
+- A plain-English Homebrew `INSIGHT` panel for scary trust words such as `Untrusted tap`.
+- Separate upfront cleanup prompts for apt-owned cleanup and broader rebuildable workstation caches.
 - End-of-run cleanup guidance that tells you whether cleanup ran, was skipped, or needs review.
+- An after-run check-in explains leftover concerns in student-friendly language, so you can walk away during updates and resolve questions when you come back.
 - Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
 - Distinct apt colors for repository traffic versus summary lines such as `Fetched ...` and `Reading package lists...`.
 - Before/after tracking and a final receipt summary.
@@ -90,7 +93,7 @@ update-all [options]
 
 | Option | What it does |
 | --- | --- |
-| `--dry-run` | Prints the update commands and report path without intentionally applying updates. |
+| `--dry-run` | Prints the update commands without intentionally applying updates. |
 | `--no-anim` | Disables animated header/scanner effects. |
 | `--no-color` | Disables ANSI color output. |
 | `-h`, `--help` | Shows command help. |
@@ -123,7 +126,9 @@ Current pending-update list support:
 | `npm globals` | `npm outdated -g`, parsed as package current -> latest |
 | Homebrew/Linuxbrew | `brew outdated --verbose`, parsed where Homebrew output includes old/new |
 
-Homebrew also gets a tap-trust preflight before `brew update`. If Homebrew marks a third-party tap as `Untrusted`, `update-all` explains in plain English that this is a trust/provenance warning, not proof of malware and not an expired-license warning. The recommended gold standard is to remove unused or unrecognized untrusted taps, and keep one only when you intentionally need it and trust its source. `update-all` shows the exact `brew untap ...` command and asks before doing anything.
+Homebrew also gets a tap-trust preflight before `brew update`. A Homebrew `tap` is an extra package source, like an added shelf outside the default store. If Homebrew marks a third-party tap as `Untrusted`, `update-all` shows an `INSIGHT` panel that says what this means in plain English: Homebrew cannot prove who controls that source. It is a provenance warning, not proof of malware and not an expired-license warning.
+
+`brew untap ...` removes that extra package source from Homebrew so future `brew` runs stop reading it. It does not delete your projects or random files. Homebrew may refuse to untap when installed tools still depend on that source, which is a useful safety stop. The recommended gold standard is to remove unused or unrecognized untrusted taps, and keep one only when you intentionally need it and trust its source. `update-all` shows the exact `brew untap ...` command and asks for any removal decision before the update sweep starts.
 
 Other package managers still stream their native update output and are tracked in the final receipt. Broader registry-backed package discovery belongs to planned Safety Coach Mode.
 
@@ -147,7 +152,7 @@ Other package managers still stream their native update output and are tracked i
 | Cargo-installed CLIs | Uses `cargo install-update -a` only when the helper already exists |
 | `gh extension` | GitHub CLI extensions |
 | VS Code/VSCodium extensions | Updates installed editor extensions when `code` or `codium` exists |
-| `fwupdmgr` | Linux firmware updates, prompt-gated because firmware can require trust prompts or reboot |
+| `fwupdmgr` | Linux firmware updates, upfront prompt-gated because firmware can require trust prompts or reboot |
 | Workstation cleanup | Rebuildable caches and old update leftovers: npm/npx, pip, bounded uv prune, Homebrew cleanup, browser automation caches, Python bytecode/test caches, disabled snap revisions, and journal trim |
 
 The coverage preflight also names things that stay manual by design: project repositories, active agent runtimes, containers/images, conda environments, large LLM weights, and shell profile edits. Those need project context, tests, or explicit user approval rather than a surprise global update.
@@ -193,7 +198,7 @@ Keep secret values out of shell history, committed files, screenshots, and logs.
 - Streamed command output is redacted for common secret shapes such as OpenAI keys, GitHub tokens, Slack tokens, AWS access keys, private-key headers, and simple `TOKEN=value` / `PASSWORD=value` style lines.
 - Compound shell commands run with `BASH_ENV` and `ENV` removed and `bash --noprofile --norc`, so the updater does not source `.bashrc` or other shell startup files for its own control flow.
 - No replacement for first-party package managers; it calls them.
-- Cleanup/removal steps ask first in live mode and skip if the terminal is not interactive.
+- Cleanup/removal and firmware choices are collected before the live update sweep starts, and skip if the terminal is not interactive.
 - Apt cleanup uses apt-owned cleanup only: `apt-get autoremove --purge -y`, `apt-get autoclean`, and `apt-get clean`.
 - Workstation cache cleanup is separate and only removes rebuildable caches or old update leftovers. It intentionally leaves archives, models, databases, project data, installed runtimes, and active virtualenvs alone.
 - `Hermes Agent` is intentionally skipped to avoid surprise-upgrading active agent workflows.
@@ -284,7 +289,7 @@ Personal utility, public-safe prototype. The command is useful today and has Git
 
 - Add mocked integration tests for package-manager flows.
 - Add Safety Coach Mode for deprecated/removed/advisory package flagging.
-- Add interactive prompts for OpenClaw, Hermes, and other agent/runtime stacks.
+- Add upfront interactive prompts for OpenClaw, Hermes, and other agent/runtime stacks.
 - Add optional JSON or Markdown run receipts.
 - Add a screenshot or asciinema demo for the README.
 - Add clearer per-manager failure summaries.

@@ -18,25 +18,35 @@ _ua_sudo_keepalive_pid=""
 _ua_sudo_keepalive_stopped=0
 _ua_prev_int_trap=""
 _ua_prev_term_trap=""
+_ua_firmware_choice="no"
+_ua_apt_cleanup_choice="no"
+_ua_workstation_cleanup_choice="no"
 
 declare -a _ua_labels=()
 declare -a _ua_stats=()
 declare -a _ua_before=()
 declare -a _ua_after=()
 declare -a _ua_notes=()
+declare -a _ua_concern_titles=()
+declare -a _ua_concern_notes=()
+declare -a _ua_concern_actions=()
+declare -a _ua_brew_taps=()
+declare -a _ua_brew_sources=()
+declare -a _ua_brew_installed=()
+declare -a _ua_brew_untap_choices=()
 
 usage() {
   cat <<'EOF'
 update-all - local workstation updater
 
 Usage:
-  update-all [--dry-run] [--no-anim] [--no-color] [--help]
+  update-all [--dry-run] [--no-anim] [--no-color] [-h|--help]
 
 Options:
   --dry-run   Print each update command instead of running it.
   --no-anim   Disable terminal animations.
   --no-color  Disable ANSI colors.
-  --help      Show this help.
+  -h, --help  Show this help.
 
 Environment:
   UPDATE_ALL_COREPACK_TIMEOUT=90s  Timeout for corepack commands.
@@ -389,6 +399,21 @@ run_cmd() {
   return "$code"
 }
 
+run_cmd_capture() {
+  local __var="$1" output code
+  shift
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd "$@"
+    printf -v "$__var" '%s' ''
+    return 0
+  fi
+  output="$("$@" 2>&1)"
+  code=$?
+  printf '%s\n' "$output" | color_log_stream
+  printf -v "$__var" '%s' "$output"
+  return "$code"
+}
+
 run_shell() {
   local script="$1" code
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
@@ -603,7 +628,7 @@ pending_update_note() {
 }
 
 cleanup_question() {
-  local cleanup_indent="   " cleanup_art_color cleanup_punct_color
+  local mode="${1:-prompt}" cleanup_indent="   " cleanup_art_color cleanup_punct_color
   cleanup_art_color="$C_CLEANUP_WORD"
   cleanup_punct_color="$C_ORANGE"
   printf '\n'
@@ -623,16 +648,25 @@ cleanup_question() {
   printf '%s%bThis will run apt-owned cleanup only.%b\n' "$cleanup_indent" "$C_PURPOSE" "$C_RESET"
   printf '%s%bIt may purge packages apt marks as no longer needed and clear downloaded apt caches.%b\n' "$cleanup_indent" "$C_PURPOSE" "$C_RESET"
   printf '%s%bNothing outside apt is deleted here.%b\n\n' "$cleanup_indent" "$C_TIP" "$C_RESET"
-  printf '%s%bAnswer y/N at the prompt below.%b\n\n' "$cleanup_indent" "$C_UNIT" "$C_RESET"
+  if [ "$mode" = "preview" ]; then
+    printf '%s%bDry-run previews these commands without asking for input.%b\n\n' "$cleanup_indent" "$C_UNIT" "$C_RESET"
+  else
+    printf '%s%bAnswer y/N at the prompt below.%b\n\n' "$cleanup_indent" "$C_UNIT" "$C_RESET"
+  fi
 }
 
 workstation_cleanup_question() {
+  local mode="${1:-prompt}"
   printf '\n'
   printf '   %bWORKSTATION CACHE CLEANUP?%b\n' "$C_UNIT" "$C_RESET"
   printf '   %bThis removes rebuildable caches and old update leftovers only.%b\n' "$C_PURPOSE" "$C_RESET"
   printf '   %bIt leaves archives, LLM weights, project data, active virtualenvs, and databases alone.%b\n' "$C_TIP" "$C_RESET"
   printf '   %bTargets include npm/npx, pip, uv prune, Homebrew cleanup, browser automation caches, Python bytecode, disabled snap revisions, and journal trim.%b\n\n' "$C_PURPOSE" "$C_RESET"
-  printf '   %bAnswer y/N at the prompt below.%b\n\n' "$C_UNIT" "$C_RESET"
+  if [ "$mode" = "preview" ]; then
+    printf '   %bDry-run previews these commands without asking for input.%b\n\n' "$C_UNIT" "$C_RESET"
+  else
+    printf '   %bAnswer y/N at the prompt below.%b\n\n' "$C_UNIT" "$C_RESET"
+  fi
 }
 
 run_workstation_cleanup() {
@@ -765,14 +799,14 @@ show_pending_brew_updates() {
 }
 
 show_brew_tap_trust_preflight() {
-  local taps tap info source installed installed_from_tap untrusted_count=0 remove_code=0
+  local taps tap info idx untrusted_count=0 remove_code=0
 
   pending_updates_begin "brew tap trust preflight"
   printf '  %bWhat this checks:%b extra Homebrew tap repositories outside the default Homebrew set.\n' "$C_HEADER" "$C_RESET"
   printf '  %bPlain English:%b an Untrusted tap is not automatically malware and it is not an expired license.\n' "$C_HEADER" "$C_RESET"
   printf '  It means Homebrew cannot prove the tap belongs to a trusted source. A tap can define install and update code, so it deserves a pause.\n'
   printf '  %bGold standard:%b remove unused or unrecognized untrusted taps; keep one only when you intentionally need it and trust its source.\n' "$C_HEADER" "$C_RESET"
-  printf '  update-all will explain the finding and ask before untapping anything.\n'
+  printf '  update-all collected any untap choices before the update sweep started.\n'
 
   taps="$(brew tap 2>/dev/null || true)"
   if [ -z "$taps" ]; then
@@ -787,29 +821,32 @@ show_brew_tap_trust_preflight() {
     info="$(brew tap-info "$tap" 2>&1 || true)"
     if printf '%s\n' "$info" | grep -Eq '(^|[[:space:]])Untrusted($|[[:space:]])'; then
       untrusted_count=$((untrusted_count + 1))
-      source="$(printf '%s\n' "$info" | sed -n 's/^From:[[:space:]]*//p' | sed -n '1p')"
-      installed="$(brew list --formula --full-name 2>/dev/null; brew list --cask --full-name 2>/dev/null || true)"
-      installed_from_tap="$(printf '%s\n' "$installed" | grep -F "$tap/" || true)"
-
-      printf '\n  %bPAUSE%b Homebrew marks %s as Untrusted.\n' "$C_WARN" "$C_RESET" "$tap"
-      [ -n "$source" ] && printf '       source: %s\n' "$source"
-      printf '       meaning: Homebrew has no trust proof for this tap.\n'
-      printf '       not a verdict: this alone is not proof that the tap is malicious.\n'
-      if [ -n "$installed_from_tap" ]; then
-        printf '       installed from this tap:\n'
-        printf '%s\n' "$installed_from_tap" | sed 's/^/         - /'
-        printf '       recommended action: keep it for now only if you rely on those tools, then review the tap source before future upgrades.\n'
+      idx="$(brew_tap_index "$tap" 2>/dev/null || true)"
+      if [ -n "$idx" ]; then
+        pending_update_note "$tap: insight shown during upfront choices"
+        if choice_is_yes "${_ua_brew_untap_choices[$idx]}"; then
+          if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+            show_cmd brew untap "$tap"
+            add_concern "Trust source action" "Dry-run previewed removing the untrusted Homebrew tap $tap." "In a live run, answer yes only if you do not recognize or use this tap; Homebrew may refuse if installed tools still depend on it."
+          else
+            printf '%bRUN%b upfront choice was yes: untapping %s before brew update.\n' "$C_OK" "$C_RESET" "$tap"
+            if brew untap "$tap"; then
+              add_concern "Trust source removed" "Homebrew no longer reads package definitions from $tap." "Nothing else is needed unless you later discover a tool expected that tap; then install from a trusted source."
+            else
+              remove_code=1
+              add_concern "Trust source removal failed" "Homebrew could not untap $tap. This often happens when installed tools still depend on that tap." "Read the error above, decide whether those tools are still needed, and retry manually with care."
+            fi
+          fi
+        else
+          printf '%bKEEP%b %s left installed by upfront choice.\n' "$C_WARN" "$C_RESET" "$tap"
+          add_concern "Trust source left installed" "The untrusted Homebrew tap $tap stayed in your update path because the upfront answer was no." "This is not panic-worthy, but review it later. Keep it only if you recognize it and trust its source."
+        fi
       else
-        printf '       installed from this tap: none detected by brew list --full-name.\n'
-        printf '       recommended action: untap it now. Unused untrusted taps should not stay in your update path.\n'
-      fi
-      printf '       command if approved: brew untap %s\n' "$tap"
-      if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
-        show_cmd brew untap "$tap"
-      elif confirm_step "Untap $tap before brew update? Recommended yes if unused or unfamiliar; no if you intentionally rely on it."; then
-        brew untap "$tap" || remove_code=1
-      else
-        printf '%bKEEP%b %s left installed by user choice.\n' "$C_WARN" "$C_RESET" "$tap"
+        printf '\n  %bPAUSE%b Homebrew marks %s as Untrusted.\n' "$C_WARN" "$C_RESET" "$tap"
+        printf '       note: this tap appeared after the upfront choices were collected, so update-all will not remove it during this run.\n'
+        printf '       command for manual review: brew untap %s\n' "$tap"
+        printf '%bKEEP%b %s left installed because no upfront choice exists.\n' "$C_WARN" "$C_RESET" "$tap"
+        add_concern "Trust source needs review" "The untrusted Homebrew tap $tap appeared after upfront choices were collected." "Review it manually with brew tap-info $tap, then remove it with brew untap $tap if it is unfamiliar or unused."
       fi
     else
       pending_update_note "$tap: no untrusted marker reported"
@@ -844,6 +881,186 @@ confirm_step() {
     y|Y|yes|YES|Yes) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+choice_is_yes() {
+  case "${1:-no}" in
+    yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+ask_optional_choice() {
+  local prompt="$1" answer
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    return 1
+  fi
+  if [ ! -t 0 ]; then
+    printf '%bSKIP%b %s requires an interactive terminal. Defaulting to no.\n' "$C_WARN" "$C_RESET" "$prompt"
+    return 1
+  fi
+
+  printf '%b?%b %s [y/N] ' "$C_WARN" "$C_RESET" "$prompt"
+  IFS= read -r answer || return 1
+  case "$answer" in
+    y|Y|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+brew_tap_index() {
+  local tap="$1" i
+  for ((i = 0; i < ${#_ua_brew_taps[@]}; i++)); do
+    if [ "${_ua_brew_taps[$i]}" = "$tap" ]; then
+      printf '%s' "$i"
+      return 0
+    fi
+  done
+  return 1
+}
+
+inspect_brew_tap_trust() {
+  local taps tap info source installed installed_from_tap
+  _ua_brew_taps=()
+  _ua_brew_sources=()
+  _ua_brew_installed=()
+  _ua_brew_untap_choices=()
+
+  command -v brew >/dev/null 2>&1 || return 0
+  taps="$(brew tap 2>/dev/null || true)"
+  [ -n "$taps" ] || return 0
+
+  while IFS= read -r tap; do
+    [ -n "$tap" ] || continue
+    info="$(brew tap-info "$tap" 2>&1 || true)"
+    if printf '%s\n' "$info" | grep -Eq '(^|[[:space:]])Untrusted($|[[:space:]])'; then
+      source="$(printf '%s\n' "$info" | sed -n 's/^From:[[:space:]]*//p' | sed -n '1p')"
+      installed="$(brew list --formula --full-name 2>/dev/null; brew list --cask --full-name 2>/dev/null || true)"
+      installed_from_tap="$(printf '%s\n' "$installed" | grep -F "$tap/" || true)"
+      _ua_brew_taps+=("$tap")
+      _ua_brew_sources+=("$source")
+      _ua_brew_installed+=("$installed_from_tap")
+      _ua_brew_untap_choices+=("no")
+    fi
+  done <<< "$taps"
+}
+
+insight_row() {
+  local icon="$1" label="$2" text="$3" label_color="${4:-$C_LABEL}"
+  printf '  %b│%b %b%s%b %b%-12s%b %s\n' "$C_FRAME" "$C_RESET" "$C_UNIT" "$icon" "$C_RESET" "$label_color" "$label" "$C_RESET" "$text"
+}
+
+print_brew_tap_insight() {
+  local tap="$1" source="${2:-}" installed_from_tap="${3:-}"
+
+  printf '\n  %b╭─%b %bINSIGHT%b %bHomebrew trust warning%b\n' "$C_FRAME" "$C_RESET" "$C_ORANGE" "$C_RESET" "$C_HEADER" "$C_RESET"
+  printf '  %b│%b\n' "$C_FRAME" "$C_RESET"
+  insight_row "!" "Signal" "Homebrew marks this tap as Untrusted: $tap" "$C_WARN"
+  insight_row "?" "Tap" "A tap is an extra Homebrew package source, like an added shelf outside the default store." "$C_LABEL"
+  insight_row "?" "Untrusted" "Homebrew cannot prove who controls this source. That is a provenance warning, not a malware verdict." "$C_LABEL"
+  insight_row "?" "Untap means" "brew untap removes this package source from Homebrew, so future brew runs stop reading it." "$C_LABEL"
+  insight_row "OK" "Boundary" "It does not delete your projects or random files. Homebrew may refuse if installed tools still depend on it." "$C_OK"
+  insight_row "OK" "Panic level" "Do not panic. Pause, check whether you use it, and remove it if it is unfamiliar or unused." "$C_OK"
+  [ -n "$source" ] && insight_row ">" "Source" "$source" "$C_PATH"
+  if [ -n "$installed_from_tap" ]; then
+    insight_row ">" "Installed" "Tools from this tap were found below; keep only if you intentionally rely on them." "$C_WARN"
+    printf '%s\n' "$installed_from_tap" | while IFS= read -r item; do
+      [ -n "$item" ] || continue
+      printf '  %b│%b   %b-%b %s\n' "$C_FRAME" "$C_RESET" "$C_TIP" "$C_RESET" "$item"
+    done
+    insight_row ">" "Action" "Keep for now if you recognize those tools, then review the source before future upgrades." "$C_WARN"
+  else
+    insight_row ">" "Installed" "None detected from this tap by brew list --full-name." "$C_OK"
+    insight_row ">" "Action" "Recommended: untap it now. Unused untrusted taps should not stay in your update path." "$C_OK"
+  fi
+  insight_row "$" "Command" "brew untap $tap" "$C_CMD"
+  printf '  %b╰─%b %bPlain English:%b scary word, boring rule: unknown package sources deserve review.\n' "$C_FRAME" "$C_RESET" "$C_HEADER" "$C_RESET"
+}
+
+collect_optional_choices() {
+  local i
+
+  banner "CHOICES"
+  section "optional choices preflight"
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    printf '   %bDry-run:%b previewing optional prompt-gated steps without asking for input.\n' "$C_HEADER" "$C_RESET"
+    printf '   Live runs collect these choices here, before the update sweep starts.\n\n'
+  else
+    printf '   %bAnswer the optional risky or cleanup questions now.%b\n' "$C_HEADER" "$C_RESET"
+    printf '   update-all will then run the update sweep without stopping for more y/N prompts.\n\n'
+  fi
+
+  if command -v fwupdmgr >/dev/null 2>&1; then
+    if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+      _ua_firmware_choice="yes"
+      printf '%bDRY-RUN%b firmware updates will be previewed.\n' "$C_WARN" "$C_RESET"
+    elif ask_optional_choice "Check and apply firmware updates during this run? This may require vendor trust prompts or a reboot."; then
+      _ua_firmware_choice="yes"
+    else
+      _ua_firmware_choice="no"
+    fi
+  else
+    printf '%bSKIP%b firmware choice: fwupdmgr command not installed.\n' "$C_WARN" "$C_RESET"
+  fi
+
+  if command -v brew >/dev/null 2>&1; then
+    inspect_brew_tap_trust
+    if [ "${#_ua_brew_taps[@]}" -gt 0 ]; then
+      pending_updates_begin "brew tap trust preflight"
+      printf '  %bWhat this checks:%b extra Homebrew tap repositories outside the default Homebrew set.\n' "$C_HEADER" "$C_RESET"
+      printf '  %bPlain English:%b an Untrusted tap is not automatically malware and it is not an expired license.\n' "$C_HEADER" "$C_RESET"
+      printf '  It means Homebrew cannot prove the tap belongs to a trusted source. A tap can define install and update code, so it deserves a pause.\n'
+      printf '  %bGold standard:%b remove unused or unrecognized untrusted taps; keep one only when you intentionally need it and trust its source.\n' "$C_HEADER" "$C_RESET"
+      for ((i = 0; i < ${#_ua_brew_taps[@]}; i++)); do
+        print_brew_tap_insight "${_ua_brew_taps[$i]}" "${_ua_brew_sources[$i]}" "${_ua_brew_installed[$i]}"
+        if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+          _ua_brew_untap_choices[$i]="yes"
+          printf '%bDRY-RUN%b untap command will be previewed for %s.\n' "$C_WARN" "$C_RESET" "${_ua_brew_taps[$i]}"
+        elif ask_optional_choice "Untap ${_ua_brew_taps[$i]} before brew update? Recommended yes if unused or unfamiliar; no if you intentionally rely on it."; then
+          _ua_brew_untap_choices[$i]="yes"
+        fi
+      done
+      printf '\n'
+    else
+      pending_update_note "brew tap trust: no untrusted taps reported before this run"
+    fi
+  else
+    printf '%bSKIP%b brew tap choice: brew command not installed.\n' "$C_WARN" "$C_RESET"
+  fi
+
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    cleanup_question preview
+  else
+    cleanup_question
+  fi
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    _ua_apt_cleanup_choice="yes"
+    printf '%bDRY-RUN%b apt cleanup commands will be previewed.\n' "$C_WARN" "$C_RESET"
+  elif ask_optional_choice "Run apt cleanup at the end? This can purge packages apt says are no longer needed and clear apt caches."; then
+    _ua_apt_cleanup_choice="yes"
+  else
+    _ua_apt_cleanup_choice="no"
+  fi
+
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    workstation_cleanup_question preview
+  else
+    workstation_cleanup_question
+  fi
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    _ua_workstation_cleanup_choice="yes"
+    printf '%bDRY-RUN%b workstation cache cleanup commands will be previewed.\n' "$C_WARN" "$C_RESET"
+  elif ask_optional_choice "Run workstation cache cleanup at the end? This removes rebuildable caches and old update leftovers."; then
+    _ua_workstation_cleanup_choice="yes"
+  else
+    _ua_workstation_cleanup_choice="no"
+  fi
+
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    printf '\n%bOK%b Optional dry-run previews saved. Starting the command preview now.\n' "$C_OK" "$C_RESET"
+  else
+    printf '\n%bOK%b Optional choices saved. Starting the update sweep now.\n' "$C_OK" "$C_RESET"
+  fi
 }
 
 coverage_item() {
@@ -979,7 +1196,13 @@ version_of() {
       command -v codium >/dev/null 2>&1 && printf '%s %s' "$(command -v codium)" "$(codium --version 2>/dev/null | sed -n '1p')"
       ;;
     fwupd)
-      command -v fwupdmgr >/dev/null 2>&1 && printf '%s %s' "$(command -v fwupdmgr)" "$(fwupdmgr --version 2>/dev/null | sed -n '1p')"
+      if command -v fwupdmgr >/dev/null 2>&1; then
+        local fwupd_version
+        fwupd_version="$(fwupdmgr --version 2>/dev/null | awk '$1 == "runtime" && $2 == "org.freedesktop.fwupd" {print $3; exit}')"
+        [ -n "$fwupd_version" ] || fwupd_version="$(fwupdmgr --version 2>/dev/null | awk '$2 == "org.freedesktop.fwupd" {print $3; exit}')"
+        [ -n "$fwupd_version" ] || fwupd_version="$(fwupdmgr --version 2>/dev/null | sed -n '1p')"
+        printf '%s fwupd %s' "$(command -v fwupdmgr)" "$fwupd_version"
+      fi
       ;;
     snap)
       command -v snap >/dev/null 2>&1 && printf '%s %s' "$(command -v snap)" "$(snap version 2>/dev/null | awk '/^snap /{print $2; exit}')"
@@ -1028,6 +1251,28 @@ skip_tool() {
   section "$label"
   tool_card "$key" "$title" "" "$package"
   skip_step "$label" "$note"
+}
+
+add_concern() {
+  _ua_concern_titles+=("$1")
+  _ua_concern_notes+=("$2")
+  _ua_concern_actions+=("$3")
+}
+
+fwupd_has_installable_updates() {
+  grep -F "New version:" >/dev/null 2>&1
+}
+
+fwupd_needs_manual_attention() {
+  grep -Eiq 'Update State:[[:space:]]*Failed|Update Error:|failed to write-firmware|efivarsfs|UEFI Secure Boot|Signature Database|Key Exchange Key' >/dev/null 2>&1
+}
+
+npm_output_needs_claude_script_retry() {
+  grep -Eiq 'allow-scripts.*@anthropic-ai/claude-code|@anthropic-ai/claude-code.*allowScripts|@anthropic-ai/claude-code.*postinstall' >/dev/null 2>&1
+}
+
+uv_output_has_stale_extra_warning() {
+  grep -Eiq 'does not have an extra named' >/dev/null 2>&1
 }
 
 report() {
@@ -1101,6 +1346,7 @@ report() {
   printf '%b\n\n' "$bar"
 
   cleanup_next_steps "$bar"
+  after_run_check_in "$bar"
 
   if [ "$rc" -eq 0 ]; then
     printf '%b✓  update-all finished without failed steps%b\n\n' "$C_OK" "$C_RESET"
@@ -1144,7 +1390,31 @@ cleanup_next_steps() {
   [ -z "$apt_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$apt_note"
   printf '  %b%-18s%b %b%s%b\n' "$C_LABEL" "cache cleanup" "$C_RESET" "$C_RESULT" "$cache_status" "$C_RESET"
   [ -z "$cache_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$cache_note"
-  printf '  %b%-18s%b %bCleanup is interactive in live runs: review each prompt, answer yes only for cleanup you understand, and use --dry-run to preview commands again.%b\n' "$C_LABEL" "guidance" "$C_RESET" "$C_PURPOSE" "$C_RESET"
+  printf '  %b%-18s%b %bCleanup choices are collected before updates start: answer yes only for cleanup you understand, and use --dry-run to preview commands again.%b\n' "$C_LABEL" "guidance" "$C_RESET" "$C_PURPOSE" "$C_RESET"
+  printf '%b\n\n' "$bar"
+}
+
+after_run_check_in() {
+  local bar="$1" i
+
+  printf '  %bAFTER-RUN CHECK-IN%b\n' "$C_HEADER" "$C_RESET"
+  printf '%b\n' "$bar"
+  printf '  %b%-18s%b %bWhat to resolve after this run, in plain English.%b\n' "$C_LABEL" "purpose" "$C_RESET" "$C_PURPOSE" "$C_RESET"
+
+  if [ "$rc" -ne 0 ]; then
+    printf '  %b%-18s%b %bOne or more update steps failed. Start with the FAIL rows above; the command did not finish cleanly.%b\n' "$C_LABEL" "status" "$C_RESET" "$C_BAD" "$C_RESET"
+  elif [ "${#_ua_concern_titles[@]}" -eq 0 ]; then
+    printf '  %b%-18s%b %bNo unresolved concerns were recorded. You can close the terminal or read the receipt for learning.%b\n' "$C_LABEL" "status" "$C_RESET" "$C_OK" "$C_RESET"
+  else
+    printf '  %b%-18s%b %bThe update sweep finished; review these notes when you come back.%b\n' "$C_LABEL" "status" "$C_RESET" "$C_WARN" "$C_RESET"
+  fi
+
+  for ((i = 0; i < ${#_ua_concern_titles[@]}; i++)); do
+    printf '\n  %b%s%b %b%s%b\n' "$C_UNIT" ">" "$C_RESET" "$C_HEADER" "${_ua_concern_titles[$i]}" "$C_RESET"
+    printf '     %b%-8s%b %s\n' "$C_TIP" "means:" "$C_RESET" "${_ua_concern_notes[$i]}"
+    printf '     %b%-8s%b %s\n' "$C_TIP" "action:" "$C_RESET" "${_ua_concern_actions[$i]}"
+  done
+
   printf '%b\n\n' "$bar"
 }
 
@@ -1241,6 +1511,12 @@ run_updates() {
   sudo_cmd apt-get -o Dpkg::Options::=--force-confold upgrade -y
   after="$(version_of apt-upgradable 2>/dev/null || true)"
   track "apt upgrade" $? "$before" "$after"
+  case "$after" in
+    ""|"0 upgradable") ;;
+    *)
+      add_concern "System packages still pending" "apt still reports $after after the upgrade. Ubuntu may defer phased updates or hold packages for safety." "Usually this is not urgent. Run update-all later, or inspect with apt list --upgradable if you want to learn what remains."
+      ;;
+  esac
 
   if command -v snap >/dev/null 2>&1; then
     before="$(version_of snap 2>/dev/null || true)"
@@ -1270,22 +1546,42 @@ run_updates() {
     tool_card "fwupd" "Linux firmware updates" "$before" "fwupdmgr update"
     if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
       show_cmd fwupdmgr refresh --force
+      show_cmd fwupdmgr get-updates
       show_cmd fwupdmgr update
       after="$(version_of fwupd 2>/dev/null || true)"
       track "firmware updates" 0 "$before" "$after" "dry-run: firmware update is prompt-gated in a live run"
-    elif confirm_step "Check and apply firmware updates now? This may require vendor trust prompts or a reboot."; then
-      run_cmd fwupdmgr refresh --force
+    elif choice_is_yes "$_ua_firmware_choice"; then
+      local fw_refresh_output fw_updates_output fw_update_output
+      run_cmd_capture fw_refresh_output fwupdmgr refresh --force
       local fw_refresh=$?
-      run_cmd fwupdmgr update
-      local fw_update=$?
+      run_cmd_capture fw_updates_output fwupdmgr get-updates
+      local fw_updates=$?
       after="$(version_of fwupd 2>/dev/null || true)"
-      if [ "$fw_refresh" -eq 0 ] && [ "$fw_update" -eq 0 ]; then
-        track "firmware updates" 0 "$before" "$after" "fwupd completed; follow any reboot guidance it printed"
+      if [ "$fw_refresh" -ne 0 ]; then
+        track "firmware updates" 1 "$before" "$after" "fwupd metadata refresh failed with exit=$fw_refresh"
+      elif [ "$fw_updates" -ne 0 ] && ! printf '%s\n' "$fw_updates_output" | fwupd_needs_manual_attention; then
+        track "firmware updates" 1 "$before" "$after" "fwupd get-updates failed with exit=$fw_updates"
+      elif ! printf '%s\n' "$fw_updates_output" | fwupd_has_installable_updates; then
+        track "firmware updates" 0 "$before" "$after" "fwupd reports no installable firmware updates"
+      elif printf '%s\n' "$fw_updates_output" | fwupd_needs_manual_attention; then
+        track "firmware updates" 0 "$before" "$after" "fwupd reports UEFI/Secure Boot firmware needing manual attention; not auto-applied"
+        add_concern "Firmware needs manual attention" "fwupd has UEFI/Secure Boot firmware updates, and at least one previous attempt is marked failed by fwupd. This is hardware/firmware state, not a broken package update." "Review with fwupdmgr get-updates when you are ready to watch it. Expect possible firmware setup, Secure Boot, efivars, or reboot work outside update-all."
       else
-        track "firmware updates" 1 "$before" "$after" "refresh exit=$fw_refresh, update exit=$fw_update"
+        run_cmd_capture fw_update_output fwupdmgr update
+        local fw_update=$?
+        after="$(version_of fwupd 2>/dev/null || true)"
+        if [ "$fw_update" -eq 0 ]; then
+          track "firmware updates" 0 "$before" "$after" "fwupd completed; follow any reboot guidance it printed"
+        elif printf '%s\n' "$fw_update_output" | fwupd_needs_manual_attention; then
+          track "firmware updates" 0 "$before" "$after" "fwupd returned manual UEFI/Secure Boot attention; not counted as a workstation update failure"
+          add_concern "Firmware needs manual attention" "fwupd could not apply a UEFI/Secure Boot firmware update automatically. This usually needs a watched firmware flow, reboot, or machine-specific setup." "Review the fwupd output above, then handle firmware manually outside an unattended update-all run."
+        else
+          track "firmware updates" 1 "$before" "$after" "refresh exit=$fw_refresh, get-updates exit=$fw_updates, update exit=$fw_update"
+        fi
       fi
     else
-      skip_step "firmware updates" "skipped by user; firmware was not changed"
+      skip_step "firmware updates" "skipped by upfront choice; firmware was not changed"
+      add_concern "Firmware skipped" "Firmware updates can require hardware trust prompts or a reboot, so they were skipped by the upfront choice." "Run update-all again and answer yes only when you are ready to watch that step and reboot if needed."
     fi
   else
     skip_tool "fwupd" "Linux firmware updates" "firmware updates" "fwupdmgr command not installed" "fwupdmgr update"
@@ -1374,8 +1670,25 @@ run_updates() {
     section "npm globals"
     tool_card "npm-globals" "npm global packages"
     show_pending_npm_globals
-    run_cmd npm update -g --no-fund
-    track "npm globals" $?
+    local npm_globals_output
+    run_cmd_capture npm_globals_output npm update -g --no-fund
+    local npm_globals_code=$?
+    if printf '%s\n' "$npm_globals_output" | npm_output_needs_claude_script_retry; then
+      printf '   %b%s%b npm blocked Claude Code postinstall during the global sweep; retrying that trusted package with scripts enabled for this command.\n' "$C_LABEL" "note" "$C_RESET"
+      if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+        show_cmd npm install -g --ignore-scripts=false @anthropic-ai/claude-code@latest --no-fund
+      else
+        run_cmd npm install -g --ignore-scripts=false @anthropic-ai/claude-code@latest --no-fund
+      fi
+      local npm_claude_script_code=$?
+      if [ "$npm_globals_code" -eq 0 ] && [ "$npm_claude_script_code" -eq 0 ]; then
+        track "npm globals" 0 "" "" "global packages updated; Claude Code postinstall warning auto-resolved"
+      else
+        track "npm globals" 1 "" "" "npm update exit=$npm_globals_code, Claude Code script retry exit=$npm_claude_script_code"
+      fi
+    else
+      track "npm globals" "$npm_globals_code"
+    fi
 
     if command -v claude >/dev/null 2>&1; then
       before="$(version_of claude 2>/dev/null || true)"
@@ -1440,8 +1753,15 @@ run_updates() {
 
     section "uv tool upgrade"
     tool_card "uv" "uv-installed tools"
-    run_cmd uv tool upgrade --all
-    track "uv tool upgrade" $?
+    local uv_tool_output
+    run_cmd_capture uv_tool_output uv tool upgrade --all
+    local uv_tool_code=$?
+    if [ "$uv_tool_code" -eq 0 ] && printf '%s\n' "$uv_tool_output" | uv_output_has_stale_extra_warning; then
+      track "uv tool upgrade" 0 "" "" "uv completed; one installed tool reports stale optional-extra metadata"
+      add_concern "uv tool metadata warning" "uv reported that an installed Python tool references an optional extra that no longer exists, but the tool-upgrade command still completed." "This is not an update-all failure. If it keeps appearing, reinstall or replace the specific uv tool that prints the warning."
+    else
+      track "uv tool upgrade" "$uv_tool_code"
+    fi
   else
     skip_tool "uv" "uv Python toolchain" "uv self update" "uv command not installed" "uv"
     skip_tool "uv" "uv-installed tools" "uv tool upgrade" "uv command not installed" "uv tool upgrade --all"
@@ -1521,8 +1841,8 @@ run_updates() {
   banner "CLEANUP"
   section "apt autoremove + clean"
   tool_card "cleanup" "apt cleanup"
-  cleanup_question
-  if confirm_step "Run apt cleanup now? This can purge packages apt says are no longer needed and clear apt caches."; then
+  printf '   %b%s%b %s\n\n' "$C_LABEL" "upfront choice" "$C_RESET" "$_ua_apt_cleanup_choice"
+  if choice_is_yes "$_ua_apt_cleanup_choice"; then
     sudo_cmd apt-get autoremove --purge -y
     local clean_a=$?
     sudo_cmd apt-get autoclean
@@ -1535,17 +1855,19 @@ run_updates() {
       track "apt autoremove" 1 "" "" "autoremove exit=$clean_a, autoclean exit=$clean_b, clean exit=$clean_c"
     fi
   else
-    skip_step "apt autoremove" "skipped by user; no packages removed or cache cleaned"
+    skip_step "apt autoremove" "skipped by upfront choice; no packages removed or cache cleaned"
+    add_concern "Apt cleanup skipped" "No apt-owned cleanup ran, so auto-removable packages and apt download caches may remain." "This is safe. Run update-all again and answer yes to apt cleanup when you want that maintenance."
   fi
 
   section "workstation cache cleanup"
   tool_card "cleanup" "workstation cache cleanup"
-  workstation_cleanup_question
-  if confirm_step "Run workstation cache cleanup now? This removes rebuildable caches and old update leftovers."; then
+  printf '   %b%s%b %s\n\n' "$C_LABEL" "upfront choice" "$C_RESET" "$_ua_workstation_cleanup_choice"
+  if choice_is_yes "$_ua_workstation_cleanup_choice"; then
     run_workstation_cleanup
     track "workstation cache cleanup" $? "" "" "safe cache/trash sweep; archives, LLM weights, databases, and project data are left alone"
   else
-    skip_step "workstation cache cleanup" "skipped by user; no non-apt caches removed"
+    skip_step "workstation cache cleanup" "skipped by upfront choice; no non-apt caches removed"
+    add_concern "Cache cleanup skipped" "No broader rebuildable cache cleanup ran, so npm/pip/browser/test caches may remain." "This is safe. Run update-all again and answer yes to workstation cache cleanup when you want to reclaim space."
   fi
 }
 
@@ -1556,12 +1878,25 @@ main() {
     color_log_stream
     return 0
   fi
+  if [ "${UPDATE_ALL_CLASSIFY_SELFTEST:-}" = "fwupd-manual" ]; then
+    fwupd_needs_manual_attention
+    return $?
+  fi
+  if [ "${UPDATE_ALL_CLASSIFY_SELFTEST:-}" = "npm-claude-script" ]; then
+    npm_output_needs_claude_script_retry
+    return $?
+  fi
+  if [ "${UPDATE_ALL_CLASSIFY_SELFTEST:-}" = "uv-stale-extra" ]; then
+    uv_output_has_stale_extra_warning
+    return $?
+  fi
   _ua_started_s="$(date +%s)"
   _ua_started_h="$(date '+%Y-%m-%d %H:%M:%S %Z')"
   _ua_prev_int_trap="$(trap -p INT || true)"
   _ua_prev_term_trap="$(trap -p TERM || true)"
 
   intro
+  collect_optional_choices
   prime_sudo || return $?
   run_updates
   sudo_keepalive_stop

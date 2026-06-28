@@ -94,6 +94,9 @@ printf '%s\n' "$output" | grep -F "EDITOR EXTENSIONS" >/dev/null \
 printf '%s\n' "$output" | grep -F "LINUX FIRMWARE UPDATES" >/dev/null \
   || fail "expected firmware update coverage"
 
+printf '%s\n' "$output" | grep -F "fwupdmgr get-updates" >/dev/null \
+  || fail "expected firmware dry-run to preview update inspection before applying updates"
+
 printf '%s\n' "$output" | grep -F "shell profiles" >/dev/null \
   || fail "expected shell profile boundary in coverage preflight"
 
@@ -106,8 +109,20 @@ printf '%s\n' "$output" | grep -F "RUN DETAILS" >/dev/null \
 printf '%s\n' "$output" | grep -F "CLEANUP NEXT STEPS" >/dev/null \
   || fail "expected final cleanup next-steps section"
 
-printf '%s\n' "$output" | grep -F "Cleanup is interactive in live runs" >/dev/null \
-  || fail "expected final cleanup guidance to explain interactive cleanup"
+printf '%s\n' "$output" | grep -F "AFTER-RUN CHECK-IN" >/dev/null \
+  || fail "expected final after-run check-in for user concerns"
+
+printf '%s\n' "$output" | grep -F "What to resolve after this run" >/dev/null \
+  || fail "expected final check-in to frame post-run issues plainly"
+
+printf '%s\n' "$output" | grep -F "Cleanup choices are collected before updates start" >/dev/null \
+  || fail "expected final cleanup guidance to explain upfront cleanup choices"
+
+printf '%s\n' "$output" | grep -F "OPTIONAL CHOICES PREFLIGHT" >/dev/null \
+  || fail "expected optional choices preflight before update work starts"
+
+printf '%s\n' "$output" | grep -F "Dry-run:" >/dev/null \
+  || fail "expected dry-run to explain that optional prompt-gated steps are previewed without input"
 
 printf '%s\n' "$output" | grep -F "before:" >/dev/null \
   || fail "expected receipt before detail rows"
@@ -120,7 +135,7 @@ if printf '%s\n' "$output" | grep -F "STEP                          RESULT      
 fi
 
 printf '%s\n' "$output" | grep -F "APT CLEANUP?" >/dev/null \
-  || fail "expected large apt cleanup question near the end"
+  || fail "expected large apt cleanup question in the upfront choices section"
 
 printf '%s\n' "$output" | grep -F "sudo apt-get autoremove --purge -y" >/dev/null \
   || fail "expected cleanup to purge apt-owned auto-removable packages"
@@ -228,11 +243,35 @@ printf '%s\n' "$brew_output" | grep -F "Plain English:" >/dev/null \
 printf '%s\n' "$brew_output" | grep -F "Gold standard:" >/dev/null \
   || fail "expected recommended gold-standard action for untrusted taps"
 
-printf '%s\n' "$brew_output" | grep -F "not automatically malware" >/dev/null \
+printf '%s\n' "$brew_output" | grep -F "INSIGHT" >/dev/null \
+  || fail "expected pretty insight panel for untrusted taps"
+
+printf '%s\n' "$brew_output" | grep -F "A tap is an extra Homebrew package source" >/dev/null \
+  || fail "expected tap to be explained in plain English"
+
+printf '%s\n' "$brew_output" | grep -F "not a malware verdict" >/dev/null \
   || fail "expected calm malware-vs-trust clarification"
 
-printf '%s\n' "$brew_output" | grep -F "recommended action: untap it now" >/dev/null \
+printf '%s\n' "$brew_output" | grep -F "Do not panic" >/dev/null \
+  || fail "expected explicit panic guidance"
+
+printf '%s\n' "$brew_output" | grep -F "Untap means" >/dev/null \
+  || fail "expected untap to be explained in plain English"
+
+printf '%s\n' "$brew_output" | grep -F "removes this package source from Homebrew" >/dev/null \
+  || fail "expected untap effect to be clear"
+
+printf '%s\n' "$brew_output" | grep -F "does not delete your projects" >/dev/null \
+  || fail "expected untap safety boundary to be clear"
+
+printf '%s\n' "$brew_output" | grep -F "Homebrew may refuse if installed tools still depend on it" >/dev/null \
+  || fail "expected untap dependency/refusal caveat"
+
+printf '%s\n' "$brew_output" | grep -F "Recommended: untap it now" >/dev/null \
   || fail "expected unused untrusted tap removal recommendation"
+
+printf '%s\n' "$brew_output" | grep -F "Trust source action" >/dev/null \
+  || fail "expected untrusted tap action in final check-in"
 
 printf '%s\n' "$brew_output" | grep -F "brew untap example/tap" >/dev/null \
   || fail "expected exact untap command to be shown in dry-run"
@@ -256,4 +295,22 @@ fi
 
 if printf '%s\n' "$redacted" | grep -F "$github_token" >/dev/null; then
   fail "GitHub-style test token leaked through redaction"
+fi
+
+printf 'Update State:       Failed\nUpdate Error:       failed to write data to efivarsfs\n' \
+  | UPDATE_ALL_CLASSIFY_SELFTEST=fwupd-manual "$UPDATE_ALL" --no-anim --no-color \
+  || fail "expected fwupd efivars failure to classify as manual firmware attention"
+
+printf 'npm warn allow-scripts   @anthropic-ai/claude-code@2.1.195 (postinstall: node install.cjs)\n' \
+  | UPDATE_ALL_CLASSIFY_SELFTEST=npm-claude-script "$UPDATE_ALL" --no-anim --no-color \
+  || fail "expected npm Claude Code allow-scripts warning to trigger trusted script retry"
+
+printf 'warning: The package `typer==0.26.8` does not have an extra named `all`\n' \
+  | UPDATE_ALL_CLASSIFY_SELFTEST=uv-stale-extra "$UPDATE_ALL" --no-anim --no-color \
+  || fail "expected uv stale optional-extra warning to be recognized"
+
+late_prompt_calls="$(grep -nE 'elif confirm_step|if confirm_step' "$UPDATE_ALL" || true)"
+if [ -n "$late_prompt_calls" ]; then
+  printf '%s\n' "$late_prompt_calls" >&2
+  fail "optional y/N prompts should be collected up front, not called mid-run"
 fi
