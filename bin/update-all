@@ -1723,8 +1723,8 @@ receipt_visual_selftest() {
   rc=0
   _ua_labels=("yarn (corepack)" "brew formula: libevent" "uv tool: pillow" "apt upgrade" "flatpak update" "coverage preflight")
   _ua_stats=("UPDATED" "UPDATED" "UPDATED" "UNCHANGED" "SKIP" "OK")
-  _ua_before=("/home/user/.local/bin/yarn 1.22.22" "libevent 2.1.12_1" "pillow 12.2.0" "0 upgradable" "" "")
-  _ua_after=("/home/user/.local/bin/yarn 4.17.0" "2.1.13" "12.3.0" "0 upgradable" "" "")
+  _ua_before=("/usr/bin/yarn 1.22.22" "libevent 2.1.12_1" "pillow 12.2.0" "0 upgradable" "" "")
+  _ua_after=("/usr/bin/yarn 4.17.0" "2.1.13" "12.3.0" "0 upgradable" "" "")
   _ua_notes=("bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)" "Homebrew upgraded a formula" "uv updated the nano-pdf tool environment" "" "flatpak command not installed" "installed safe surfaces are updated; project-specific stacks stay explicit")
   add_concern "Firmware needs manual attention" "fwupd has UEFI/Secure Boot firmware updates that should not be blindly applied." "Review with fwupdmgr get-updates when you are ready to watch it."
   report
