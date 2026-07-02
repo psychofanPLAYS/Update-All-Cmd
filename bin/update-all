@@ -1630,8 +1630,8 @@ print_attention_story() {
 
   for ((i = 0; i < ${#_ua_concern_titles[@]}; i++)); do
     printf '  %b> %s%b\n' "$C_UNIT" "${_ua_concern_titles[$i]}" "$C_RESET"
-    printf '     %b%s%b  %s\n' "$C_TIP" "means:" "$C_RESET" "${_ua_concern_notes[$i]}"
-    printf '     %b%s%b %s\n' "$C_TIP" "action:" "$C_RESET" "${_ua_concern_actions[$i]}"
+    print_receipt_field "     " "means:" "${_ua_concern_notes[$i]}" "$C_RESET" 8 74 "$C_TIP"
+    print_receipt_field "     " "action:" "${_ua_concern_actions[$i]}" "$C_RESET" 8 74 "$C_TIP"
   done
   printf '%b\n' "$bar"
 }
@@ -1701,10 +1701,10 @@ report() {
   done
 
   printf '%b\n' "$bar"
-  printf '  %b%s%b  %s\n' "$C_HEADER" "$(styled_package_name "active npm")" "$C_RESET" "$(version_of npm-active 2>/dev/null || printf 'not found')"
-  printf '  %b%s%b %s\n' "$C_HEADER" "$(styled_package_name "bundled npm")" "$C_RESET" "$(version_of npm-bundled 2>/dev/null || printf 'not found')"
-  printf '  %b%s%b  npm funding notices are optional donation links, not errors or bills.\n' "$C_HEADER" "$(styled_package_name "npm fund")" "$C_RESET"
-  printf '  %b%s%b        package purpose notes are plain-English guidance; registry/advisory lookups belong to Safety Coach Mode.\n' "$C_HEADER" "notes" "$C_RESET"
+  print_receipt_field "  " "active npm" "$(version_of npm-active 2>/dev/null || printf 'not found')" "$C_RESET" 12 72 "$C_HEADER"
+  print_receipt_field "  " "bundled npm" "$(version_of npm-bundled 2>/dev/null || printf 'not found')" "$C_RESET" 12 72 "$C_HEADER"
+  print_receipt_field "  " "npm fund" "npm funding notices are optional donation links, not errors or bills." "$C_RESET" 12 72 "$C_HEADER"
+  print_receipt_field "  " "notes" "package purpose notes are plain-English guidance; registry/advisory lookups belong to Safety Coach Mode." "$C_RESET" 12 72 "$C_HEADER"
   printf '%b\n\n' "$bar"
 
   cleanup_next_steps "$bar"
@@ -1752,6 +1752,21 @@ cleanup_note_for() {
   printf 'not reached'
 }
 
+print_receipt_field() {
+  local indent="$1" label="$2" text="$3" text_color="${4:-$C_RESET}" label_width="${5:-8}" wrap_width="${6:-74}" label_color="${7:-$C_LABEL}"
+  local line first=1
+  [ -n "$text" ] || return 0
+
+  while IFS= read -r line; do
+    if [ "$first" -eq 1 ]; then
+      printf '%s%b%-*s%b %b%s%b\n' "$indent" "$label_color" "$label_width" "$label" "$C_RESET" "$text_color" "$line" "$C_RESET"
+      first=0
+    else
+      printf '%s%*s %b%s%b\n' "$indent" "$label_width" "" "$text_color" "$line" "$C_RESET"
+    fi
+  done < <(printf '%s\n' "$text" | fold -s -w "$wrap_width")
+}
+
 cleanup_next_steps() {
   local bar="$1" apt_status cache_status apt_note cache_note
   apt_status="$(cleanup_status_for "apt autoremove")"
@@ -1762,10 +1777,10 @@ cleanup_next_steps() {
   printf '  %bCLEANUP NEXT STEPS%b\n' "$C_HEADER" "$C_RESET"
   printf '%b\n' "$bar"
   printf '  %b%-18s%b %b%s%b\n' "$C_LABEL" "apt cleanup" "$C_RESET" "$C_RESULT" "$apt_status" "$C_RESET"
-  [ -z "$apt_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$apt_note"
+  print_receipt_field "     " "note:" "$apt_note" "$C_RESET" 8 74 "$C_TIP"
   printf '  %b%-18s%b %b%s%b\n' "$C_LABEL" "cache cleanup" "$C_RESET" "$C_RESULT" "$cache_status" "$C_RESET"
-  [ -z "$cache_note" ] || printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$cache_note"
-  printf '  %b%-18s%b %bCleanup choices are collected before updates start: answer yes only for cleanup you understand, and use --dry-run to preview commands again.%b\n' "$C_LABEL" "guidance" "$C_RESET" "$C_PURPOSE" "$C_RESET"
+  print_receipt_field "     " "note:" "$cache_note" "$C_RESET" 8 74 "$C_TIP"
+  print_receipt_field "  " "guidance" "Cleanup choices are collected before updates start: answer yes only for cleanup you understand, and use --dry-run to preview commands again." "$C_PURPOSE" 18 64 "$C_LABEL"
   printf '%b\n\n' "$bar"
 }
 
@@ -1774,20 +1789,20 @@ after_run_check_in() {
 
   printf '  %bAFTER-RUN CHECK-IN%b\n' "$C_HEADER" "$C_RESET"
   printf '%b\n' "$bar"
-  printf '  %b%-18s%b %bWhat to resolve after this run, in plain English.%b\n' "$C_LABEL" "purpose" "$C_RESET" "$C_PURPOSE" "$C_RESET"
+  print_receipt_field "  " "purpose" "What to resolve after this run, in plain English." "$C_PURPOSE" 18 64 "$C_LABEL"
 
   if [ "$rc" -ne 0 ]; then
-    printf '  %b%-18s%b %bOne or more update steps failed. Start with the FAIL rows above; the command did not finish cleanly.%b\n' "$C_LABEL" "status" "$C_RESET" "$C_BAD" "$C_RESET"
+    print_receipt_field "  " "status" "One or more update steps failed. Start with the FAIL rows above; the command did not finish cleanly." "$C_BAD" 18 64 "$C_LABEL"
   elif [ "${#_ua_concern_titles[@]}" -eq 0 ]; then
-    printf '  %b%-18s%b %bNo unresolved concerns were recorded. You can close the terminal or read the receipt for learning.%b\n' "$C_LABEL" "status" "$C_RESET" "$C_OK" "$C_RESET"
+    print_receipt_field "  " "status" "No unresolved concerns were recorded. You can close the terminal or read the receipt for learning." "$C_OK" 18 64 "$C_LABEL"
   else
-    printf '  %b%-18s%b %bThe update sweep finished; review these notes when you come back.%b\n' "$C_LABEL" "status" "$C_RESET" "$C_WARN" "$C_RESET"
+    print_receipt_field "  " "status" "The update sweep finished; review these notes when you come back." "$C_WARN" 18 64 "$C_LABEL"
   fi
 
   for ((i = 0; i < ${#_ua_concern_titles[@]}; i++)); do
     printf '\n  %b%s%b %b%s%b\n' "$C_UNIT" ">" "$C_RESET" "$C_HEADER" "${_ua_concern_titles[$i]}" "$C_RESET"
-    printf '     %b%-8s%b %s\n' "$C_TIP" "means:" "$C_RESET" "${_ua_concern_notes[$i]}"
-    printf '     %b%-8s%b %s\n' "$C_TIP" "action:" "$C_RESET" "${_ua_concern_actions[$i]}"
+    print_receipt_field "     " "means:" "${_ua_concern_notes[$i]}" "$C_RESET" 8 74 "$C_TIP"
+    print_receipt_field "     " "action:" "${_ua_concern_actions[$i]}" "$C_RESET" 8 74 "$C_TIP"
   done
 
   printf '%b\n\n' "$bar"
