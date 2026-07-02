@@ -35,7 +35,8 @@ Clone it anywhere you keep small tools, then use `install.sh` to place an
 - Apt repository lines (`Hit:`, `Get:`, `Ign:`) and progress lines (`Fetched`,
   `Reading package lists`) use separate colors.
 - Missing tools still print cards and end as `SKIP` so beginners learn what they are.
-- Final section is `RECEIPT`, with counts and per-step `before:`, `after:`, and `note:` detail rows.
+- Firmware checks print a `FIRMWARE REVIEW` card with device, release, old -> new firmware version, urgency, plain-English meaning, and action. The default live surface should not dump raw `Device ID`, `GUID`, or checksum fields.
+- Final section is `RECEIPT`, starting with the beginner dashboard sections `WHAT CHANGED (old -> new)`, `NEEDS YOUR ATTENTION`, and `NO ACTION NEEDED`, followed by detailed stacked `before` / `after` version rows and `note:` audit rows.
 - `CLEANUP NEXT STEPS` appears at the end of the receipt and summarizes apt cleanup, workstation cache cleanup, and the interactive cleanup rule for live runs.
 - Claude Code and Codex use their first-party updaters (`claude update`, `codex update`) instead of relying on npm install to refresh the active binaries.
 - `COVERAGE PREFLIGHT` appears before update work and tells the user which installed surfaces will be checked, which common surfaces are skipped, and which categories remain manual by design.
@@ -54,7 +55,7 @@ Implemented:
 Not yet implemented as old -> new preflight tables:
 
 - Snap, Flatpak, Bun, uv, pipx, rustup, cargo-installed CLIs, gh extensions,
-  editor extensions, and firmware old -> new preflight lists. Their native
+  and editor extensions old -> new preflight lists. Their native
   output is still streamed and receipt-tracked.
 
 ## Coverage Behavior
@@ -78,6 +79,8 @@ Manual by design:
 ## Cleanup Behavior
 
 Cleanup is split into two explicit prompts. Removal stays opt-in and visible.
+At any optional live prompt, typing `a` or `all` once answers yes to every remaining
+optional question in that run, including both cleanup prompts.
 
 The first prompt is apt-owned only and gated by a large `APT CLEANUP?` prompt.
 When the user answers yes, it runs:
