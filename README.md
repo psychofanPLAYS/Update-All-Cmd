@@ -39,6 +39,8 @@ update-all
 - Pending update lists before supported upgrade steps, including old -> new versions where the package manager exposes them cleanly.
 - A plain-English Homebrew `INSIGHT` panel for scary trust words such as `Untrusted tap`.
 - Separate upfront cleanup prompts for apt-owned cleanup and broader rebuildable workstation caches.
+- Firmware update output is summarized as a `FIRMWARE REVIEW` card with device, release, version arrow, urgency, meaning, and next action instead of dumping raw hardware identifiers by default.
+- A final beginner-readable dashboard: `WHAT CHANGED (old -> new)`, `NEEDS YOUR ATTENTION`, then `NO ACTION NEEDED`, all in the terminal tab.
 - End-of-run cleanup guidance that tells you whether cleanup ran, was skipped, or needs review.
 - An after-run check-in explains leftover concerns in student-friendly language, so you can walk away during updates and resolve questions when you come back.
 - Dimmed normal package-manager chatter so live output stops becoming a wall of white text.
@@ -98,6 +100,8 @@ update-all [options]
 | `--no-color` | Disables ANSI color output. |
 | `-h`, `--help` | Shows command help. |
 
+Live runs collect optional choices before the update sweep starts. At any optional prompt, type `a` or `all` once to answer yes to every remaining optional question in that run, including firmware review, apt cleanup, and workstation cache cleanup.
+
 Common flows:
 
 ```bash
@@ -128,7 +132,7 @@ Current pending-update list support:
 
 Homebrew also gets a tap-trust preflight before `brew update`. A Homebrew `tap` is an extra package source, like an added shelf outside the default store. If Homebrew marks a third-party tap as `Untrusted`, `update-all` shows an `INSIGHT` panel that says what this means in plain English: Homebrew cannot prove who controls that source. It is a provenance warning, not proof of malware and not an expired-license warning.
 
-`brew untap ...` removes that extra package source from Homebrew so future `brew` runs stop reading it. It does not delete your projects or random files. Homebrew may refuse to untap when installed tools still depend on that source, which is a useful safety stop. The recommended gold standard is to remove unused or unrecognized untrusted taps, and keep one only when you intentionally need it and trust its source. `update-all` shows the exact `brew untap ...` command and asks for any removal decision before the update sweep starts.
+`brew untap ...` removes that extra package source from Homebrew so future `brew` runs stop reading it. It does not delete your projects or random files. Homebrew may refuse to untap when installed tools still depend on that source, which is a useful safety stop. The recommended gold standard is to remove unused or unrecognized untrusted taps, and keep one only when you intentionally need it and trust its source. `update-all` shows the exact `brew untap ...` command and asks for any removal decision before the update sweep starts. Typing `a` or `all` at the first optional prompt also answers yes to remaining Homebrew tap prompts.
 
 Other package managers still stream their native update output and are tracked in the final receipt. Broader registry-backed package discovery belongs to planned Safety Coach Mode.
 
@@ -169,10 +173,11 @@ update-all --no-anim --no-color
 
 ### Corepack Timeout
 
-Corepack steps are bounded so they do not hang forever:
+Corepack and `update-node` steps are bounded so they do not hang forever:
 
 ```bash
 UPDATE_ALL_COREPACK_TIMEOUT=120s update-all
+UPDATE_ALL_NODE_TIMEOUT=300s update-all
 ```
 
 ### Optional Sudo Secret Helper
@@ -199,6 +204,9 @@ Keep secret values out of shell history, committed files, screenshots, and logs.
 - Compound shell commands run with `BASH_ENV` and `ENV` removed and `bash --noprofile --norc`, so the updater does not source `.bashrc` or other shell startup files for its own control flow.
 - No replacement for first-party package managers; it calls them.
 - Cleanup/removal and firmware choices are collected before the live update sweep starts, and skip if the terminal is not interactive.
+- At any optional live prompt, typing `a` or `all` once answers yes to every remaining optional question in that run.
+- The terminal tab is the primary interface. Important update results, cleanup status, and manual follow-up notes are printed there in plain English; users should not need to search an artifact folder to understand what happened.
+- The final receipt stays in the throwaway terminal tab. It shows changed tools as `old -> new`, explains manual follow-up items in plain English, and keeps the detailed audit rows below.
 - Apt cleanup uses apt-owned cleanup only: `apt-get autoremove --purge -y`, `apt-get autoclean`, and `apt-get clean`.
 - Workstation cache cleanup is separate and only removes rebuildable caches or old update leftovers. It intentionally leaves archives, models, databases, project data, installed runtimes, and active virtualenvs alone.
 - `Hermes Agent` is intentionally skipped to avoid surprise-upgrading active agent workflows.

@@ -5,6 +5,7 @@
 set -uo pipefail
 
 UPDATE_ALL_COREPACK_TIMEOUT="${UPDATE_ALL_COREPACK_TIMEOUT:-90s}"
+UPDATE_ALL_NODE_TIMEOUT="${UPDATE_ALL_NODE_TIMEOUT:-300s}"
 UPDATE_ALL_ANIM="${UPDATE_ALL_ANIM:-1}"
 UPDATE_ALL_COLOR="${UPDATE_ALL_COLOR:-1}"
 UPDATE_ALL_DRY_RUN=0
@@ -21,6 +22,7 @@ _ua_prev_term_trap=""
 _ua_firmware_choice="no"
 _ua_apt_cleanup_choice="no"
 _ua_workstation_cleanup_choice="no"
+_ua_answer_all_choice="no"
 
 declare -a _ua_labels=()
 declare -a _ua_stats=()
@@ -48,8 +50,13 @@ Options:
   --no-color  Disable ANSI colors.
   -h, --help  Show this help.
 
+Interactive:
+  At optional live prompts, type a or all once to answer yes to every remaining
+  optional question in that run.
+
 Environment:
   UPDATE_ALL_COREPACK_TIMEOUT=90s  Timeout for corepack commands.
+  UPDATE_ALL_NODE_TIMEOUT=300s     Timeout for update-node.
   UPDATE_ALL_ANIM=0               Disable animations.
   UPDATE_ALL_COLOR=0              Disable colors.
   UPDATE_ALL_SUDO_SECRET_KEY=name Optional `secret` helper key for sudo.
@@ -373,10 +380,10 @@ run_bounded() {
   shift
   local code
   if command -v timeout >/dev/null 2>&1; then
-    timeout --foreground "$limit" "$@" 2>&1 | color_log_stream
+    timeout "$limit" "$@" </dev/null 2>&1 | color_log_stream
     code=${PIPESTATUS[0]}
   else
-    "$@" 2>&1 | color_log_stream
+    "$@" </dev/null 2>&1 | color_log_stream
     code=${PIPESTATUS[0]}
   fi
   return "$code"
@@ -394,7 +401,7 @@ run_cmd() {
     show_cmd "$@"
     return 0
   fi
-  "$@" 2>&1 | color_log_stream
+  "$@" </dev/null 2>&1 | color_log_stream
   code=${PIPESTATUS[0]}
   return "$code"
 }
@@ -407,9 +414,23 @@ run_cmd_capture() {
     printf -v "$__var" '%s' ''
     return 0
   fi
-  output="$("$@" 2>&1)"
+  output="$("$@" </dev/null 2>&1)"
   code=$?
   printf '%s\n' "$output" | color_log_stream
+  printf -v "$__var" '%s' "$output"
+  return "$code"
+}
+
+run_cmd_capture_quiet() {
+  local __var="$1" output code
+  shift
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd "$@"
+    printf -v "$__var" '%s' ''
+    return 0
+  fi
+  output="$("$@" </dev/null 2>&1)"
+  code=$?
   printf -v "$__var" '%s' "$output"
   return "$code"
 }
@@ -420,9 +441,29 @@ run_shell() {
     show_cmd env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script"
     return 0
   fi
-  env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script" 2>&1 | color_log_stream
+  env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script" </dev/null 2>&1 | color_log_stream
   code=${PIPESTATUS[0]}
   return "$code"
+}
+
+run_shell_capture() {
+  local __var="$1" script="$2" output code
+  if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
+    show_cmd env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script"
+    printf -v "$__var" '%s' ''
+    return 0
+  fi
+  output="$(env -u BASH_ENV -u ENV bash --noprofile --norc -c "$script" </dev/null 2>&1)"
+  code=$?
+  printf '%s\n' "$output" | color_log_stream
+  printf -v "$__var" '%s' "$output"
+  return "$code"
+}
+
+sudo_secret_available() {
+  [ -n "${UPDATE_ALL_SUDO_SECRET_KEY:-}" ] || return 1
+  command -v secret >/dev/null 2>&1 || return 1
+  secret has "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null
 }
 
 sudo_cmd() {
@@ -437,14 +478,14 @@ sudo_cmd() {
     code=${PIPESTATUS[0]}
     return "$code"
   fi
+  if sudo_secret_available; then
+    secret get "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null | sudo -S -p '' "$@" 2>&1 | color_log_stream
+    code=${PIPESTATUS[1]}
+    return "$code"
+  fi
   if sudo -n true 2>/dev/null; then
     sudo "$@" 2>&1 | color_log_stream
     code=${PIPESTATUS[0]}
-    return "$code"
-  fi
-  if [ -n "${UPDATE_ALL_SUDO_SECRET_KEY:-}" ] && command -v secret >/dev/null 2>&1 && secret has "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null; then
-    secret get "$UPDATE_ALL_SUDO_SECRET_KEY" 2>/dev/null | sudo -S -p '' "$@" 2>&1 | color_log_stream
-    code=${PIPESTATUS[1]}
     return "$code"
   fi
   sudo "$@" 2>&1 | color_log_stream
@@ -454,7 +495,8 @@ sudo_cmd() {
 
 color_log_stream() {
   local line lower
-  while IFS= read -r line || [ -n "$line" ]; do
+  tr -d '\000' | while IFS= read -r line || [ -n "$line" ]; do
+    line="${line//^@/}"
     line="$(redact_secrets "$line")"
     lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
     if [ -z "$line" ]; then
@@ -895,15 +937,25 @@ ask_optional_choice() {
   if [ "$UPDATE_ALL_DRY_RUN" = 1 ]; then
     return 1
   fi
+  if choice_is_yes "$_ua_answer_all_choice"; then
+    printf '%bALL%b %s -> yes\n' "$C_OK" "$C_RESET" "$prompt"
+    return 0
+  fi
   if [ ! -t 0 ]; then
     printf '%bSKIP%b %s requires an interactive terminal. Defaulting to no.\n' "$C_WARN" "$C_RESET" "$prompt"
     return 1
   fi
 
-  printf '%b?%b %s [y/N] ' "$C_WARN" "$C_RESET" "$prompt"
+  printf '%b?%b %s [y/n/a/all] ' "$C_WARN" "$C_RESET" "$prompt"
   IFS= read -r answer || return 1
   case "$answer" in
     y|Y|yes|YES|Yes) return 0 ;;
+    n|N|no|NO|No) return 1 ;;
+    a|A|all|ALL|All)
+      _ua_answer_all_choice="yes"
+      printf '%bALL%b all mode: yes to every remaining optional question.\n' "$C_OK" "$C_RESET"
+      return 0
+      ;;
     *) return 1 ;;
   esac
 }
@@ -987,7 +1039,8 @@ collect_optional_choices() {
     printf '   Live runs collect these choices here, before the update sweep starts.\n\n'
   else
     printf '   %bAnswer the optional risky or cleanup questions now.%b\n' "$C_HEADER" "$C_RESET"
-    printf '   update-all will then run the update sweep without stopping for more y/N prompts.\n\n'
+    printf '   Type %ba%b or %ball%b once to answer yes to every remaining optional question in this run.\n' "$C_CMD" "$C_RESET" "$C_CMD" "$C_RESET"
+    printf '   update-all will then run the update sweep without stopping for more prompts.\n\n'
   fi
 
   if command -v fwupdmgr >/dev/null 2>&1; then
@@ -1154,10 +1207,10 @@ version_of() {
       command -v corepack >/dev/null 2>&1 && printf '%s %s' "$(command -v corepack)" "$(corepack --version 2>/dev/null)"
       ;;
     pnpm)
-      command -v pnpm >/dev/null 2>&1 && printf '%s %s' "$(command -v pnpm)" "$(pnpm --version 2>/dev/null)"
+      command -v pnpm >/dev/null 2>&1 && printf '%s %s' "$(command -v pnpm)" "$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version 2>/dev/null)"
       ;;
     yarn)
-      command -v yarn >/dev/null 2>&1 && printf '%s %s' "$(command -v yarn)" "$(yarn --version 2>/dev/null)"
+      command -v yarn >/dev/null 2>&1 && printf '%s %s' "$(command -v yarn)" "$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn --version 2>/dev/null)"
       ;;
     bun)
       command -v bun >/dev/null 2>&1 && printf '%s %s' "$(command -v bun)" "$(bun --version 2>/dev/null)"
@@ -1214,7 +1267,7 @@ version_of() {
 }
 
 track() {
-  local label="$1" code="$2" before="${3:-}" after="${4:-}" note="${5:-}" status
+  local label="$1" code="$2" before="${3:-}" after="${4:-}" note="${5:-}" forced_status="${6:-}" status
   _ua_labels+=("$label")
   _ua_before+=("$before")
   _ua_after+=("$after")
@@ -1223,6 +1276,8 @@ track() {
   if [ "$code" -ne 0 ]; then
     status="FAIL"
     rc=1
+  elif [ -n "$forced_status" ]; then
+    status="$forced_status"
   elif [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
     status="UPDATED"
   elif [ -n "$before" ] && [ -n "$after" ]; then
@@ -1231,8 +1286,8 @@ track() {
     status="OK"
   fi
   tool_result "$status" "$note"
-  if [ -n "$after" ]; then
-    tool_version_after "$after" "$status"
+  if [ -n "$before" ] || [ -n "$after" ]; then
+    print_receipt_version_pair "$status" "$before" "$after" "version" "   " 15
   fi
   _ua_stats+=("$status")
 }
@@ -1267,12 +1322,318 @@ fwupd_needs_manual_attention() {
   grep -Eiq 'Update State:[[:space:]]*Failed|Update Error:|failed to write-firmware|efivarsfs|UEFI Secure Boot|Signature Database|Key Exchange Key' >/dev/null 2>&1
 }
 
+firmware_summary_rows() {
+  awk '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    function clean(s) {
+      gsub(/\r/, "", s)
+      gsub(/^[[:space:]│├└─]+/, "", s)
+      return trim(s)
+    }
+    function after_colon(s) {
+      sub(/^.*:[[:space:]]*/, "", s)
+      return clean(s)
+    }
+    {
+      line = clean($0)
+      if (line ~ /:$/ && line !~ /^(Device Flags|Release Flags|Description|Issues?|GUIDs|Checksum):/) {
+        heading = line
+        sub(/:$/, "", heading)
+      }
+      if (line ~ /^Current version:/) {
+        current = after_colon(line)
+        device = heading
+      }
+      if (line ~ /^New version:/) {
+        count++
+        devices[count] = device
+        releases[count] = heading
+        old_versions[count] = current
+        new_versions[count] = after_colon(line)
+        urgencies[count] = "unknown"
+        summaries[count] = ""
+      }
+      if (count > 0 && line ~ /^Summary:/ && summaries[count] == "") {
+        summaries[count] = after_colon(line)
+      }
+      if (count > 0 && line ~ /^Urgency:/ && urgencies[count] == "unknown") {
+        urgencies[count] = after_colon(line)
+      }
+    }
+    END {
+      for (i = 1; i <= count; i++) {
+        printf "%s|%s|%s|%s|%s|%s\n", devices[i], releases[i], old_versions[i], new_versions[i], urgencies[i], summaries[i]
+      }
+    }
+  '
+}
+
+print_firmware_summary() {
+  local output="$1" rows count=0 device release old_version new_version urgency summary
+  rows="$(printf '%s\n' "$output" | firmware_summary_rows)"
+
+  printf '   %bFIRMWARE REVIEW%b\n' "$C_HEADER" "$C_RESET"
+  if [ -z "$rows" ]; then
+    printf '   %bPlain English:%b fwupd did not report installable firmware updates.\n' "$C_HEADER" "$C_RESET"
+    printf '   %b%s%b nothing to do here right now.\n\n' "$C_TIP" "action:" "$C_RESET"
+    return 0
+  fi
+
+  printf '   %bPlain English:%b firmware updates touch hardware-level code and can require reboot, vendor trust, or Secure Boot setup.\n' "$C_HEADER" "$C_RESET"
+  printf '   update-all is showing the useful parts here instead of dumping the scary raw fwupd tree.\n'
+  printf '   %bDefault action:%b review these manually later; update-all will not auto-apply risky firmware from the unattended flow.\n\n' "$C_TIP" "$C_RESET"
+
+  while IFS='|' read -r device release old_version new_version urgency summary; do
+    [ -n "$device$release$old_version$new_version" ] || continue
+    count=$((count + 1))
+    printf '   %b>%b %b%s%b\n' "$C_UNIT" "$C_RESET" "$C_HEADER" "${device:-Firmware device}" "$C_RESET"
+    [ -z "$release" ] || printf '      %b%-8s%b %s\n' "$C_LABEL" "release" "$C_RESET" "$release"
+    if [ -n "$old_version$new_version" ]; then
+      printf '      %b%-8s%b %b%s%b %b->%b %b%s%b\n' \
+        "$C_LABEL" "version" "$C_RESET" \
+        "$C_VERSION_BEFORE" "${old_version:-unknown}" "$C_RESET" \
+        "$C_FRAME" "$C_RESET" \
+        "$C_VERSION_AFTER" "${new_version:-unknown}" "$C_RESET"
+    fi
+    [ -z "$urgency" ] || [ "$urgency" = "unknown" ] || printf '      %b%-8s%b %s\n' "$C_WARN" "urgency" "$C_RESET" "$urgency"
+    [ -z "$summary" ] || printf '      %b%-8s%b %s\n' "$C_TIP" "means" "$C_RESET" "$summary"
+  done <<< "$rows"
+
+  printf '\n   %b%s%b review with %b%s%b when you can watch the machine and reboot if needed.\n\n' "$C_TIP" "action:" "$C_RESET" "$C_CMD" "fwupdmgr get-updates" "$C_RESET"
+}
+
 npm_output_needs_claude_script_retry() {
   grep -Eiq 'allow-scripts.*@anthropic-ai/claude-code|@anthropic-ai/claude-code.*allowScripts|@anthropic-ai/claude-code.*postinstall' >/dev/null 2>&1
 }
 
 uv_output_has_stale_extra_warning() {
   grep -Eiq 'does not have an extra named' >/dev/null 2>&1
+}
+
+output_implies_update() {
+  grep -Eiq '(^|[[:space:]])changed [1-9][0-9]* packages?|(^|[[:space:]])(added|removed|updated|upgraded) [1-9][0-9]* packages?|(^|[[:space:]])Upgraded [1-9][0-9]* outdated packages?' >/dev/null 2>&1
+}
+
+first_arrow_delta() {
+  sed -nE 's/^[[:space:]]*([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+->[[:space:]]+([^[:space:]()]+).*/\1|\2|\3/p' | sed -n '1p'
+}
+
+uv_tool_delta() {
+  awk '
+    /^Modified .* environment/ {
+      env=$0
+      sub(/^Modified /, "", env)
+      sub(/ environment$/, "", env)
+    }
+    /^[[:space:]]*-[[:space:]]*[^=]+==/ && old == "" {
+      old=$0
+      sub(/^[[:space:]]*-[[:space:]]*/, "", old)
+    }
+    /^[[:space:]]*\+[[:space:]]*[^=]+==/ && new == "" {
+      new=$0
+      sub(/^[[:space:]]*\+[[:space:]]*/, "", new)
+    }
+    END {
+      if (old != "" && new != "") {
+        old_pkg=old
+        new_pkg=new
+        sub(/==.*/, "", old_pkg)
+        sub(/==.*/, "", new_pkg)
+        old_ver=old
+        new_ver=new
+        sub(/^[^=]+==/, "", old_ver)
+        sub(/^[^=]+==/, "", new_ver)
+        if (old_pkg == new_pkg) {
+          printf "%s|%s|%s|%s\n", old_pkg, old_ver, new_ver, env
+        }
+      }
+    }
+  '
+}
+
+receipt_version() {
+  local value="${1:-}" path rest
+  [ -n "$value" ] || {
+    printf '-'
+    return 0
+  }
+  case "$value" in
+    /*)
+      path="${value%% *}"
+      rest="${value#"$path"}"
+      rest="${rest# }"
+      [ -n "$rest" ] || rest="installed"
+      printf '%s' "$rest"
+      ;;
+    *)
+      printf '%s' "$value"
+      ;;
+  esac
+}
+
+status_meaning() {
+  case "$1" in
+    UPDATED) printf 'updated: something changed during this step' ;;
+    OK) printf 'checked: command completed normally' ;;
+    UNCHANGED) printf 'already current: no visible version change' ;;
+    SKIP) printf 'skipped safely: tool is missing or intentionally left alone' ;;
+    FAIL) printf 'failed: this needs review before trusting the whole run' ;;
+    *) printf 'recorded by update-all' ;;
+  esac
+}
+
+receipt_status_style() {
+  local stat="$1" __icon_var="$2" __color_var="$3" selected_icon selected_color
+  case "$stat" in
+    UPDATED)   selected_icon="↗"; selected_color="$C_OK" ;;
+    OK)        selected_icon="✓"; selected_color="$C_OK" ;;
+    UNCHANGED) selected_icon="="; selected_color="$C_WARN" ;;
+    FAIL)      selected_icon="✗"; selected_color="$C_BAD" ;;
+    SKIP)      selected_icon="·"; selected_color="$C_TIP" ;;
+    *)         selected_icon="?"; selected_color="$C_RESET" ;;
+  esac
+  printf -v "$__icon_var" '%s' "$selected_icon"
+  printf -v "$__color_var" '%s' "$selected_color"
+}
+
+receipt_version_pair_colors() {
+  local stat="$1" __before_var="$2" __after_var="$3" selected_before_color selected_after_color
+  case "$stat" in
+    UPDATED)
+      selected_before_color="$C_VERSION_BEFORE"
+      selected_after_color="$C_VERSION_AFTER"
+      ;;
+    FAIL)
+      selected_before_color="$C_BAD"
+      selected_after_color="$C_BAD"
+      ;;
+    UNCHANGED)
+      selected_before_color="$C_VERSION_BEFORE"
+      selected_after_color="$C_VERSION_BEFORE"
+      ;;
+    *)
+      selected_before_color="$C_TIP"
+      selected_after_color="$C_TIP"
+      ;;
+  esac
+  printf -v "$__before_var" '%s' "$selected_before_color"
+  printf -v "$__after_var" '%s' "$selected_after_color"
+}
+
+print_receipt_version_pair() {
+  local stat="$1" before_raw="${2:-}" after_raw="${3:-}" label="${4:-version}" indent="${5:-     }" label_width="${6:-8}"
+  local before after before_color after_color
+  [ -n "$before_raw" ] || before_raw="-"
+  [ -n "$after_raw" ] || after_raw="-"
+  [ "$before_raw" != "-" ] || [ "$after_raw" != "-" ] || return 0
+
+  before="$(receipt_value "$(receipt_version "$before_raw")" 34)"
+  after="$(receipt_value "$(receipt_version "$after_raw")" 34)"
+  receipt_version_pair_colors "$stat" before_color after_color
+  if [ "$stat" = "UPDATED" ]; then
+    printf '%s%b%-*s%b %b%-6s%b %b%s%b\n' \
+      "$indent" "$C_LABEL" "$label_width" "$label" "$C_RESET" \
+      "$C_VERSION_BEFORE_LABEL" "before" "$C_RESET" \
+      "$before_color" "$before" "$C_RESET"
+    printf '%s%b%-*s%b %b%-6s%b %b%s%b\n' \
+      "$indent" "$C_LABEL" "$label_width" "" "$C_RESET" \
+      "$C_VERSION_AFTER_LABEL" "after" "$C_RESET" \
+      "$after_color" "$after" "$C_RESET"
+  else
+    printf '%s%b%-*s%b %b%-6s%b %b%s%b\n' \
+      "$indent" "$C_LABEL" "$label_width" "$label" "$C_RESET" \
+      "$C_VERSION_BEFORE_LABEL" "before" "$C_RESET" \
+      "$before_color" "$before" "$C_RESET"
+    printf '%s%b%-*s%b %b%-6s%b %b%s%b\n' \
+      "$indent" "$C_LABEL" "$label_width" "" "$C_RESET" \
+      "$C_VERSION_BEFORE_LABEL" "after" "$C_RESET" \
+      "$after_color" "$after" "$C_RESET"
+  fi
+}
+
+print_changed_story() {
+  local bar="$1" i count=0
+
+  printf '  %bWHAT CHANGED%b  %b(old -> new)%b\n' "$C_HEADER" "$C_RESET" "$C_TIP" "$C_RESET"
+  printf '%b\n' "$bar"
+
+  for ((i = 0; i < ${#_ua_labels[@]}; i++)); do
+    [ "${_ua_stats[$i]}" = "UPDATED" ] || continue
+    count=$((count + 1))
+    local before after note
+    before="$(receipt_value "$(receipt_version "${_ua_before[$i]}")" 34)"
+    after="$(receipt_value "$(receipt_version "${_ua_after[$i]}")" 34)"
+    note="${_ua_notes[$i]}"
+    printf '  %b↗ UPDATED%b  %s\n' "$C_OK" "$C_RESET" "$(styled_package_name "${_ua_labels[$i]}")"
+    if [ "$before" != "-" ] || [ "$after" != "-" ]; then
+      if [ "$before" = "$after" ]; then
+        printf '     %b%-8s%b %b%-6s%b %b%s%b\n' "$C_LABEL" "version" "$C_RESET" "$C_VERSION_AFTER_LABEL" "after" "$C_RESET" "$C_VERSION_AFTER" "$after" "$C_RESET"
+        printf '     %b%-8s%b %b(no visible version change; updater still changed packages or metadata)%b\n' "$C_LABEL" "" "$C_RESET" "$C_TIP" "$C_RESET"
+      else
+        print_receipt_version_pair "UPDATED" "$before" "$after"
+      fi
+    fi
+    [ -z "$note" ] || printf '     %b%s%b   %s\n' "$C_TIP" "means" "$C_RESET" "$note"
+  done
+
+  if [ "$count" -eq 0 ]; then
+    printf '  %b✓ No visible version changes%b\n' "$C_OK" "$C_RESET"
+    printf '     %b%s%b   Everything checked was already current, skipped safely, or completed without a version bump.\n' "$C_TIP" "means" "$C_RESET"
+  fi
+  printf '%b\n' "$bar"
+}
+
+print_no_action_needed() {
+  local bar="$1" i count=0 icon color
+
+  printf '  %bNO ACTION NEEDED%b\n' "$C_HEADER" "$C_RESET"
+  printf '%b\n' "$bar"
+
+  for ((i = 0; i < ${#_ua_labels[@]}; i++)); do
+    case "${_ua_stats[$i]}" in
+      OK|UNCHANGED|SKIP) ;;
+      *) continue ;;
+    esac
+    count=$((count + 1))
+    receipt_status_style "${_ua_stats[$i]}" icon color
+    printf '  %b%s %-9s%b %s\n' "$color" "$icon" "${_ua_stats[$i]}" "$C_RESET" "$(styled_package_name "${_ua_labels[$i]}")"
+    printf '     %b%s%b   %s\n' "$C_TIP" "means" "$C_RESET" "$(status_meaning "${_ua_stats[$i]}")"
+    if [ -n "${_ua_before[$i]}" ] || [ -n "${_ua_after[$i]}" ]; then
+      print_receipt_version_pair "${_ua_stats[$i]}" "${_ua_before[$i]}" "${_ua_after[$i]}"
+    fi
+    [ -z "${_ua_notes[$i]}" ] || printf '     %b%s%b    %s\n' "$C_TIP" "note" "$C_RESET" "${_ua_notes[$i]}"
+  done
+
+  [ "$count" -gt 0 ] || printf '  %bNo quiet rows recorded.%b\n' "$C_TIP" "$C_RESET"
+  printf '%b\n' "$bar"
+}
+
+print_attention_story() {
+  local bar="$1" i
+
+  printf '  %bNEEDS YOUR ATTENTION%b\n' "$C_HEADER" "$C_RESET"
+  printf '%b\n' "$bar"
+
+  if [ "$rc" -ne 0 ]; then
+    printf '  %b✗ Failed step recorded%b\n' "$C_BAD" "$C_RESET"
+    printf '     %b%s%b  Read the FAIL rows in the detailed receipt below before closing this tab.\n' "$C_TIP" "action" "$C_RESET"
+  fi
+
+  if [ "${#_ua_concern_titles[@]}" -eq 0 ] && [ "$rc" -eq 0 ]; then
+    printf '  %b✓ Nothing urgent recorded%b\n' "$C_OK" "$C_RESET"
+    printf '     %b%s%b   No manual follow-up was detected during this run.\n' "$C_TIP" "means" "$C_RESET"
+  fi
+
+  for ((i = 0; i < ${#_ua_concern_titles[@]}; i++)); do
+    printf '  %b> %s%b\n' "$C_UNIT" "${_ua_concern_titles[$i]}" "$C_RESET"
+    printf '     %b%s%b  %s\n' "$C_TIP" "means:" "$C_RESET" "${_ua_concern_notes[$i]}"
+    printf '     %b%s%b %s\n' "$C_TIP" "action:" "$C_RESET" "${_ua_concern_actions[$i]}"
+  done
+  printf '%b\n' "$bar"
 }
 
 report() {
@@ -1303,6 +1664,12 @@ report() {
     "$C_TIP" "$skipped" "$C_RESET" \
     "$C_BAD" "$failed" "$C_RESET"
   printf '%b\n' "$bar"
+
+  print_changed_story "$bar"
+  print_attention_story "$bar"
+  print_no_action_needed "$bar"
+  printf '\n'
+
   printf '  %bRUN DETAILS%b\n' "$C_HEADER" "$C_RESET"
   printf '%b\n' "$bar"
 
@@ -1323,15 +1690,10 @@ report() {
       *)         icon="?"; color="$C_RESET" ;;
     esac
 
-    [ -n "$before" ] || before="-"
-    [ -n "$after" ] || after="-"
     printf '  %b%s %-9s%b ' "$color" "$icon" "$stat" "$C_RESET"
     printf '%s\n' "$(styled_package_name "$lbl")"
-    if [ "$before" != "-" ]; then
-      printf '     %b%-8s%b %s\n' "$C_VERSION_BEFORE_LABEL" "before:" "$C_RESET" "$(receipt_value "$before")"
-    fi
-    if [ "$after" != "-" ]; then
-      printf '     %b%-8s%b %s\n' "$C_VERSION_AFTER_LABEL" "after:" "$C_RESET" "$(receipt_value "$after")"
+    if [ -n "$before" ] || [ -n "$after" ]; then
+      print_receipt_version_pair "$stat" "$before" "$after"
     fi
     if [ -n "$note" ]; then
       printf '     %b%-8s%b %s\n' "$C_TIP" "note:" "$C_RESET" "$note"
@@ -1353,6 +1715,19 @@ report() {
   else
     printf '%b✗  one or more steps failed - see FAIL rows above%b\n\n' "$C_BAD" "$C_RESET"
   fi
+}
+
+receipt_visual_selftest() {
+  _ua_started_s="$(date +%s)"
+  _ua_started_h="2026-07-01 00:00:00 TEST"
+  rc=0
+  _ua_labels=("yarn (corepack)" "brew formula: libevent" "uv tool: pillow" "apt upgrade" "flatpak update" "coverage preflight")
+  _ua_stats=("UPDATED" "UPDATED" "UPDATED" "UNCHANGED" "SKIP" "OK")
+  _ua_before=("/home/user/.local/bin/yarn 1.22.22" "libevent 2.1.12_1" "pillow 12.2.0" "0 upgradable" "" "")
+  _ua_after=("/home/user/.local/bin/yarn 4.17.0" "2.1.13" "12.3.0" "0 upgradable" "" "")
+  _ua_notes=("bounded by UPDATE_ALL_COREPACK_TIMEOUT (default 90s)" "Homebrew upgraded a formula" "uv updated the nano-pdf tool environment" "" "flatpak command not installed" "installed safe surfaces are updated; project-specific stacks stay explicit")
+  add_concern "Firmware needs manual attention" "fwupd has UEFI/Secure Boot firmware updates that should not be blindly applied." "Review with fwupdmgr get-updates when you are ready to watch it."
+  report
 }
 
 cleanup_status_for() {
@@ -1453,6 +1828,7 @@ sudo_keepalive_abort() {
 prime_sudo() {
   [ "$UPDATE_ALL_DRY_RUN" = 0 ] || return 0
   command -v sudo >/dev/null 2>&1 || return 0
+  sudo_secret_available && return 0
 
   sudo_cmd -v || return $?
 
@@ -1501,14 +1877,14 @@ run_updates() {
 
   section "apt update"
   tool_card "apt" "apt package index"
-  sudo_cmd apt-get update -y
+  sudo_cmd env TERM=dumb apt-get -o Dpkg::Use-Pty=0 -o APT::Color=0 -o APT::Progress-Fancy=0 -o Dpkg::Progress-Fancy=0 update -y
   track "apt update" $?
 
   before="$(version_of apt-upgradable 2>/dev/null || true)"
   section "apt upgrade"
   tool_card "apt" "apt package upgrade" "$before"
   show_pending_apt_updates
-  sudo_cmd apt-get -o Dpkg::Options::=--force-confold upgrade -y
+  sudo_cmd env TERM=dumb apt-get -o Dpkg::Use-Pty=0 -o APT::Color=0 -o APT::Progress-Fancy=0 -o Dpkg::Progress-Fancy=0 -o Dpkg::Options::=--force-confold upgrade -y
   after="$(version_of apt-upgradable 2>/dev/null || true)"
   track "apt upgrade" $? "$before" "$after"
   case "$after" in
@@ -1554,8 +1930,9 @@ run_updates() {
       local fw_updates_output fw_update_output
       run_cmd fwupdmgr refresh --force
       local fw_refresh=$?
-      run_cmd_capture fw_updates_output fwupdmgr get-updates
+      run_cmd_capture_quiet fw_updates_output fwupdmgr get-updates
       local fw_updates=$?
+      print_firmware_summary "$fw_updates_output"
       after="$(version_of fwupd 2>/dev/null || true)"
       if [ "$fw_refresh" -ne 0 ]; then
         track "firmware updates" 1 "$before" "$after" "fwupd metadata refresh failed with exit=$fw_refresh"
@@ -1592,9 +1969,9 @@ run_updates() {
     before="$(version_of node 2>/dev/null || true)"
     section "node runtime"
     tool_card "node" "Node.js runtime" "$before" "node"
-    run_cmd update-node
+    run_bounded "$UPDATE_ALL_NODE_TIMEOUT" update-node
     after="$(version_of node 2>/dev/null || true)"
-    track "node runtime" $? "$before" "$after" "update-node keeps Node inside the current major line"
+    track "node runtime" $? "$before" "$after" "bounded by UPDATE_ALL_NODE_TIMEOUT (default 300s); update-node keeps Node inside the current major line"
   else
     skip_tool "node" "Node.js runtime" "node runtime" "update-node command not installed" "node"
   fi
@@ -1663,9 +2040,15 @@ run_updates() {
     before="$(version_of npm-active 2>/dev/null || true)"
     section "npm self-update"
     tool_card "npm" "npm self-update" "$before" "npm@latest"
-    run_cmd npm install -g npm@latest --no-fund
+    local npm_self_output
+    run_cmd_capture npm_self_output npm install -g npm@latest --no-fund
+    local npm_self_code=$?
     after="$(version_of npm-active 2>/dev/null || true)"
-    track "npm self-update" $? "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in RECEIPT"
+    if printf '%s\n' "$npm_self_output" | output_implies_update; then
+      track "npm self-update" "$npm_self_code" "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in RECEIPT" "UPDATED"
+    else
+      track "npm self-update" "$npm_self_code" "$before" "$after" "active npm is PATH-selected; bundled npm is shown separately in RECEIPT"
+    fi
 
     section "npm globals"
     tool_card "npm-globals" "npm global packages"
@@ -1705,9 +2088,15 @@ run_updates() {
       before="$(version_of codex 2>/dev/null || true)"
       section "codex"
       tool_card "codex" "OpenAI Codex CLI" "$before" "codex update"
-      run_cmd codex update
+      local codex_output
+      run_cmd_capture codex_output codex update
+      local codex_code=$?
       after="$(version_of codex 2>/dev/null || true)"
-      track "codex" $? "$before" "$after" "uses Codex CLI's first-party updater"
+      if printf '%s\n' "$codex_output" | output_implies_update; then
+        track "codex" "$codex_code" "$before" "$after" "uses Codex CLI's first-party updater" "UPDATED"
+      else
+        track "codex" "$codex_code" "$before" "$after" "uses Codex CLI's first-party updater"
+      fi
     else
       skip_tool "codex" "OpenAI Codex CLI" "codex" "codex command not installed" "codex update"
     fi
@@ -1728,9 +2117,22 @@ run_updates() {
     tool_card "brew" "Homebrew formulae" "$before"
     show_brew_tap_trust_preflight || true
     show_pending_brew_updates
-    run_shell 'brew update && brew upgrade'
+    local brew_output
+    run_shell_capture brew_output 'brew update && brew upgrade'
+    local brew_code=$?
     after="$(version_of brew 2>/dev/null || true)"
-    track "brew upgrade" $? "$before" "$after" "Homebrew updates itself and brew-managed formulae"
+    if printf '%s\n' "$brew_output" | output_implies_update; then
+      local brew_delta brew_name brew_old brew_new
+      brew_delta="$(printf '%s\n' "$brew_output" | first_arrow_delta)"
+      if [ -n "$brew_delta" ]; then
+        IFS='|' read -r brew_name brew_old brew_new <<< "$brew_delta"
+        track "brew formula: $brew_name" "$brew_code" "$brew_name $brew_old" "$brew_new" "Homebrew upgraded this formula; Homebrew itself is $(receipt_version "$after")" "UPDATED"
+      else
+        track "brew upgrade" "$brew_code" "$before" "$after" "Homebrew upgraded one or more formulae; see the Homebrew lines above for package names" "UPDATED"
+      fi
+    else
+      track "brew upgrade" "$brew_code" "$before" "$after" "Homebrew updates itself and brew-managed formulae"
+    fi
   else
     skip_tool "brew" "Homebrew formulae" "brew upgrade" "brew command not installed" "brew"
   fi
@@ -1756,9 +2158,27 @@ run_updates() {
     local uv_tool_output
     run_cmd_capture uv_tool_output uv tool upgrade --all
     local uv_tool_code=$?
+    local uv_delta uv_pkg uv_old uv_new uv_env uv_note uv_forced_status
+    uv_delta="$(printf '%s\n' "$uv_tool_output" | uv_tool_delta)"
+    uv_note=""
+    uv_forced_status=""
+    if [ -n "$uv_delta" ]; then
+      IFS='|' read -r uv_pkg uv_old uv_new uv_env <<< "$uv_delta"
+      uv_note="uv updated ${uv_env:-an installed tool} environment"
+      uv_forced_status="UPDATED"
+    fi
     if [ "$uv_tool_code" -eq 0 ] && printf '%s\n' "$uv_tool_output" | uv_output_has_stale_extra_warning; then
-      track "uv tool upgrade" 0 "" "" "uv completed; one installed tool reports stale optional-extra metadata"
+      if [ -n "$uv_note" ]; then
+        uv_note="$uv_note; one installed tool also reports stale optional-extra metadata"
+      else
+        uv_note="uv completed; one installed tool reports stale optional-extra metadata"
+      fi
       add_concern "uv tool metadata warning" "uv reported that an installed Python tool references an optional extra that no longer exists, but the tool-upgrade command still completed." "This is not an update-all failure. If it keeps appearing, reinstall or replace the specific uv tool that prints the warning."
+    fi
+    if [ -n "$uv_forced_status" ]; then
+      track "uv tool: $uv_pkg" "$uv_tool_code" "$uv_pkg $uv_old" "$uv_new" "$uv_note" "$uv_forced_status"
+    elif [ "$uv_tool_code" -eq 0 ] && [ -n "$uv_note" ]; then
+      track "uv tool upgrade" 0 "" "" "$uv_note"
     else
       track "uv tool upgrade" "$uv_tool_code"
     fi
@@ -1874,9 +2294,45 @@ run_updates() {
 main() {
   parse_args "$@"
   color_init
+  if [ "${UPDATE_ALL_PROMPT_SELFTEST:-0}" = 1 ]; then
+    collect_optional_choices
+    printf 'firmware choice: %s\n' "$_ua_firmware_choice"
+    for ((i = 0; i < ${#_ua_brew_taps[@]}; i++)); do
+      printf 'brew untap %s: %s\n' "${_ua_brew_taps[$i]}" "${_ua_brew_untap_choices[$i]}"
+    done
+    printf 'apt cleanup choice: %s\n' "$_ua_apt_cleanup_choice"
+    printf 'workstation cleanup choice: %s\n' "$_ua_workstation_cleanup_choice"
+    return 0
+  fi
   if [ "${UPDATE_ALL_REDACTION_SELFTEST:-0}" = 1 ]; then
     color_log_stream
     return 0
+  fi
+  if [ "${UPDATE_ALL_STDIN_SELFTEST:-0}" = 1 ]; then
+    local stdin_selftest_output
+    run_cmd bash -c 'if IFS= read -r -t 0.1 _; then echo run-cmd-open; else echo run-cmd-closed; fi'
+    run_cmd_capture stdin_selftest_output bash -c 'if IFS= read -r -t 0.1 _; then echo run-capture-open; else echo run-capture-closed; fi'
+    run_bounded 2s bash -c 'if IFS= read -r -t 0.1 _; then echo run-bounded-open; else echo run-bounded-closed; fi'
+    run_shell 'if IFS= read -r -t 0.1 _; then echo run-shell-open; else echo run-shell-closed; fi'
+    run_shell_capture stdin_selftest_output 'if IFS= read -r -t 0.1 _; then echo run-shell-capture-open; else echo run-shell-capture-closed; fi'
+    return 0
+  fi
+  if [ "${UPDATE_ALL_SUDO_SELFTEST:-}" = "secret-prime" ]; then
+    prime_sudo || return $?
+    sudo_cmd printf 'sudo command ok\n'
+    local sudo_selftest_code=$?
+    sudo_keepalive_stop
+    return "$sudo_selftest_code"
+  fi
+  if [ "${UPDATE_ALL_FIRMWARE_SELFTEST:-}" = "summary" ]; then
+    local firmware_selftest_output
+    firmware_selftest_output="$(cat)"
+    print_firmware_summary "$firmware_selftest_output"
+    return 0
+  fi
+  if [ "${UPDATE_ALL_RECEIPT_SELFTEST:-}" = "visual" ]; then
+    receipt_visual_selftest
+    return $?
   fi
   if [ "${UPDATE_ALL_CLASSIFY_SELFTEST:-}" = "fwupd-manual" ]; then
     fwupd_needs_manual_attention
@@ -1888,6 +2344,10 @@ main() {
   fi
   if [ "${UPDATE_ALL_CLASSIFY_SELFTEST:-}" = "uv-stale-extra" ]; then
     uv_output_has_stale_extra_warning
+    return $?
+  fi
+  if [ "${UPDATE_ALL_CLASSIFY_SELFTEST:-}" = "updated-output" ]; then
+    output_implies_update
     return $?
   fi
   _ua_started_s="$(date +%s)"
