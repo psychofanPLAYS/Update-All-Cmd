@@ -2315,6 +2315,7 @@ main() {
     run_bounded 2s bash -c 'if IFS= read -r -t 0.1 _; then echo run-bounded-open; else echo run-bounded-closed; fi'
     run_shell 'if IFS= read -r -t 0.1 _; then echo run-shell-open; else echo run-shell-closed; fi'
     run_shell_capture stdin_selftest_output 'if IFS= read -r -t 0.1 _; then echo run-shell-capture-open; else echo run-shell-capture-closed; fi'
+    : "$stdin_selftest_output"
     return 0
   fi
   if [ "${UPDATE_ALL_SUDO_SELFTEST:-}" = "secret-prime" ]; then
